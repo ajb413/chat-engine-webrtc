@@ -1,0 +1,9 @@
+{
+  "author": "Adam Bavosa",
+  "name": "chat-engine-webrtc",
+  "version": "0.0.1",
+  "main": "src/plugin.js",
+  "dependencies": {
+    "chat-engine": "^0.9.18"
+  }
+}
