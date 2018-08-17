@@ -1,13 +1,3 @@
-// // me
-// me.direct.on('private-message', (payload) => {
-//     console.log(payload.sender.uuid, 'sent your a direct message');
-// });
-
-// // another instance
-// them.direct.connect();
-// them.direct.emit('private-message', {
-//     secret: 42
-// });
 
 function uuid() {
     function s4() {
@@ -18,39 +8,101 @@ function uuid() {
     return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
 }
 
+function onIncomingCallNotDefined(callback) {
+    console.error('ChatEngine.webRTC: Incoming call handler is not defined in config.');
+    callback(false);
+}
+
+function onCallResponseNotDefined() {
+    console.error('ChatEngine.webRTC: Incoming call response handler is not defined in config.');
+}
+
 module.exports = (config) => {
     class extension {
         construct() {
-            this.init();
-        }
+            // Holds call response on client, checks this before accepting a peer stream
+            this.callResponseCache = {};
 
-        init() {
-            this.ChatEngine.me.direct.onAny((u) => {
-                console.log(u);
-                debugger;
+            // [config.onIncomingCall] must be defined on init, otherwise incoming call will log an error.
+            // The event is meant to give the user an opportunity to respond to a call in the UI.
+            this.parentOnIncomingCall = config.onIncomingCall || onIncomingCallNotDefined;
+
+            // Video stream from local client camera
+            // Optional to pass now, can be passed when a call is accepted
+            this.localStream = config.localStream;
+
+            // [config.onCallResponse] must be defined on init, otherwise incoming call response will log an error.
+            // The event is meant to give the user an opportunity to handle a call response.
+            this.parentOnCallResponse = config.onCallResponse || onCallResponseNotDefined;
+
+            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'incomingCall'].join('.'), (payload) => {
+                this.incomingCall(payload);
             });
-            console.log('register');
+
+            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'callResponse'].join('.'), (payload) => {
+                this.callResponse(payload);
+            });
         }
 
         // connected() {
         //     this.parent.emit(['$' + 'webRTC', 'connected'].join('.'));
         // }
 
-        callUser(user) {
-            console.log('callUser', user);
-            console.log('this', this);
+        callUser(user, localStream) {
+            localStream = localStream || this.localStream;
 
             if (user.name !== 'Me') {
-                user.direct.emit('$webRTC.incomingCall', {
-                    callId: uuid()
+                user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
+                    callId: uuid(),
+                    stream: localStream
                 });
-                console.log('fire');
             }
         }
 
+        callResponse(payload) {
+            const {callId, acceptCall} = payload.data;
+            const remoteStream = payload.data.stream;
+            let uuid = payload.sender.uuid;
+            this.parentOnCallResponse(uuid, acceptCall, remoteStream);
+
+            // const {callId, acceptCall} = payload.data;
+            // const sender = payload.sender;
+            // const uuid = sender.uuid;
+            // const remoteStream = payload.data.stream;
+            
+            // Callback is only called to open the call 2 ways.
+            // Otherwise, don't call this from parent.
+            // const callback = (localStream) => {
+            //     localStream = localStream || this.localStream;
+
+            //     sender.direct.emit(['$' + 'webRTC', 'partnerStream'].join('.'), {
+            //         callId,
+            //         stream: localStream
+            //     });
+            // };
+
+            // if acceptCall is true, give them your stream
+            // this.parentOnCallResponse(callback, uuid, acceptCall, remoteStream);
+        }
+
         incomingCall(payload) {
-            // payload.sender.uuid
             console.log('incomingCall', payload);
+            const sender = payload.sender;
+            const callId = payload.data.callId;
+            const remoteStream = payload.data.stream;
+
+            // Callback is only called to open the call 2 ways.
+            // Otherwise, don't call this from parent.
+            const callResponseCallback = (acceptCall, localStream) => {
+                this.callResponseCache[callId] = acceptCall;
+                sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
+                    callId,
+                    acceptCall,
+                    stream: localStream
+                });
+            }
+
+            this.parentOnIncomingCall(sender.uuid, remoteStream, callResponseCallback);
         }
     }
 
