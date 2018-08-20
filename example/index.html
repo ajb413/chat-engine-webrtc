@@ -16,10 +16,11 @@
         text-align: center;
     }
 
-    .video-container video {
+    video.video-container {
         max-width: 400px;
         max-height: 300px;
         margin: 20px auto;
+        border: 1px solid black;
     }
 
     .visible,
@@ -53,8 +54,8 @@
         <div id="chat-online"></div>
 
         <!-- Video Containers -->
-        <div id="my-video" class="video-container"></div>
-        <div id="their-video" class="video-container"></div>
+        <div id="" ></div>
+        <div id="" class="video-container"></div>
 
         <script src="https://cdn.jsdelivr.net/npm/chat-engine@0.9.18/dist/chat-engine.js"></script>
 
@@ -64,8 +65,13 @@
             <button id="accept">Accept</button>
             <button id="reject">Reject</button>
         </div>
+
+        <video id="my-video" class="video-container" playsinline autoplay muted></video>
+        <video id="their-video" class="video-container" playsinline autoplay></video>
+
         <script src="../dist/chat-engine-webrtc.js"></script>
         <script src="onlineList.js" type="text/javascript"></script>
+    </div>
 </body>
 
 </html>

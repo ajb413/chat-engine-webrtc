@@ -23,6 +23,8 @@ module.exports = (config) => {
             // Holds call response on client, checks this before accepting a peer stream
             this.callResponseCache = {};
 
+            this.callCache = {};
+
             // [config.onIncomingCall] must be defined on init, otherwise incoming call will log an error.
             // The event is meant to give the user an opportunity to respond to a call in the UI.
             this.parentOnIncomingCall = config.onIncomingCall || onIncomingCallNotDefined;
@@ -42,67 +44,133 @@ module.exports = (config) => {
             this.ChatEngine.me.direct.on(['$' + 'webRTC', 'callResponse'].join('.'), (payload) => {
                 this.callResponse(payload);
             });
+
+            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), (payload) => {
+                this.incomingIceCandidate(payload);
+            });
         }
 
         // connected() {
         //     this.parent.emit(['$' + 'webRTC', 'connected'].join('.'));
         // }
 
-        callUser(user, localStream) {
-            localStream = localStream || this.localStream;
-
+        callUser(user, localStream, onRemoteVideoStreamAvailable) {
             if (user.name !== 'Me') {
-                user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
-                    callId: uuid(),
-                    stream: localStream
-                });
+                localStream = localStream || this.localStream;
+                console.log('localstream', localStream);
+                let callId = uuid();
+
+                let peerConnection = new RTCPeerConnection();
+                this.callCache[callId] = peerConnection;
+                peerConnection.ontrack = onRemoteVideoStreamAvailable;
+
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                let localDescription;
+
+                peerConnection.createOffer()
+                .then((description) => {
+                    localDescription = description;
+                    return peerConnection.setLocalDescription(localDescription);
+                }).then(() => {
+                    user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
+                        callId,
+                        stream: localStream,
+                        description: localDescription
+                    });
+                }).catch((error) => { console.error('createOffer error:', error) });
             }
         }
 
         callResponse(payload) {
-            const {callId, acceptCall} = payload.data;
+            const {callId, acceptCall, description} = payload.data;
             const remoteStream = payload.data.stream;
-            let uuid = payload.sender.uuid;
-            this.parentOnCallResponse(uuid, acceptCall, remoteStream);
+            let sender = payload.sender;
 
-            // const {callId, acceptCall} = payload.data;
-            // const sender = payload.sender;
-            // const uuid = sender.uuid;
-            // const remoteStream = payload.data.stream;
-            
-            // Callback is only called to open the call 2 ways.
-            // Otherwise, don't call this from parent.
-            // const callback = (localStream) => {
-            //     localStream = localStream || this.localStream;
+            if (acceptCall) {
+                // when ice candidates are available for PC, send them to the remote client
+                this.callCache[callId].onicecandidate = (iceEvent) => {
+                    if (iceEvent.candidate) {
+                        sender.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
+                            callId,
+                            candidate: iceEvent.candidate
+                        });
+                    }
+                };
 
-            //     sender.direct.emit(['$' + 'webRTC', 'partnerStream'].join('.'), {
-            //         callId,
-            //         stream: localStream
-            //     });
-            // };
+                this.callCache[callId].setRemoteDescription(description)
+                .catch((error) => {console.error(error);});
+            }
 
-            // if acceptCall is true, give them your stream
-            // this.parentOnCallResponse(callback, uuid, acceptCall, remoteStream);
+            this.parentOnCallResponse(sender.uuid, acceptCall, remoteStream);
         }
 
         incomingCall(payload) {
             console.log('incomingCall', payload);
             const sender = payload.sender;
-            const callId = payload.data.callId;
-            const remoteStream = payload.data.stream;
+            const { callId } = payload.data;
+            const remoteDescription = payload.data.description;
+            // const remoteStream = payload.data.stream;
 
             // Callback is only called to open the call 2 ways.
             // Otherwise, don't call this from parent.
-            const callResponseCallback = (acceptCall, localStream) => {
-                this.callResponseCache[callId] = acceptCall;
-                sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
-                    callId,
-                    acceptCall,
-                    stream: localStream
-                });
+            const callResponseCallback = (acceptCall, localStream, onRemoteVideoStreamAvailable) => {
+                localStream = localStream || this.localStream;
+                if (acceptCall) {
+                    // add error throws for the latter 2 function params
+                    let answerDescription;
+                    let peerConnection = new RTCPeerConnection();
+                    this.callCache[callId] = peerConnection;
+                    
+                    // when ice candidates are available for PC, send them to the remote client
+                    this.callCache[callId].onicecandidate = (iceEvent) => {
+                        if (iceEvent.candidate) {
+                            sender.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
+                                callId,
+                                candidate: iceEvent.candidate
+                            });
+                        }
+                    };
+
+                    peerConnection.addStream(localStream);
+                    peerConnection.ontrack = onRemoteVideoStreamAvailable;
+                    peerConnection.setRemoteDescription(remoteDescription).then(() => {
+                        return peerConnection.createAnswer();
+                    }).then((answer) => {
+                        answerDescription = answer;
+                        console.log('answerDescription', answerDescription)
+                        return peerConnection.setLocalDescription(answerDescription);
+                    }).then(() => {
+                        sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
+                            callId,
+                            acceptCall,
+                            stream: localStream,
+                            description: answerDescription
+                        });
+                    }).catch(error => {console.error('setRemoteDescription error:', error);});
+                } else {
+                    sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
+                        callId,
+                        acceptCall,
+                        stream: localStream
+                    });
+                }
             }
 
-            this.parentOnIncomingCall(sender.uuid, remoteStream, callResponseCallback);
+            this.parentOnIncomingCall(sender.uuid, callResponseCallback);
+        }
+
+        incomingIceCandidate(payload) {
+            const { callId, candidate } = payload.data;
+
+            if (!this.callCache[callId]) {
+                return;
+            }
+
+            this.callCache[callId].addIceCandidate(candidate)
+            .catch(error => {
+                console.error('incomingIceCandidate Error: ', error);
+            });
         }
     }
 

@@ -10,6 +10,8 @@ const incommingSpan = document.getElementById('incomming');
 const accept = document.getElementById('accept');
 const reject = document.getElementById('reject');
 
+let localStream;
+
 const ChatEngine = ChatEngineCore.create({
     publishKey: 'pub-c-60a065cb-fe91-432c-b50e-bd4974cb1f01',
     subscribeKey: 'sub-c-7c977f32-a1b3-11e8-bc5d-ae80c5ea0c92'
@@ -37,7 +39,22 @@ function incomingCallModal(uuid) {
 }
 
 function getLocalStream() {
-    return 'stream1';
+    console.log('Requesting local stream');
+    return new Promise((resolve, reject) => {
+        navigator.mediaDevices
+        .getUserMedia({
+            audio: true,
+            video: true
+        })
+        .then((stream) => {
+            myVideoContainer.srcObject = stream;
+            resolve(stream);
+        })
+        .catch(e => {
+            alert(`getUserMedia() error: ${e.name}`);
+            reject();
+        });
+    });
 }
 
 ChatEngine.on('$.ready', (data) => {
@@ -45,16 +62,27 @@ ChatEngine.on('$.ready', (data) => {
 
     header.innerHTML = '<b>Online Now</b><br>You are <b>' + username + '</b>';
 
-    const onIncomingCall = (senderUuid, remoteStream, callResponseCallback) => {
+    // function to fire when the partner's video stream becomes available
+    const onRemoteVideoStreamAvailable = (webRTCTrackEvent) => {
+        let theirVideoStream = webRTCTrackEvent.streams[0];
+        console.log('onRemoteVideoStreamAvailable', theirVideoStream);
+        theirVideoContainer.srcObject = theirVideoStream;
+    };
+
+    const onIncomingCall = (senderUuid, callResponseCallback) => {
         incomingCallModal(senderUuid).then((accept) => {
-            let localStream = accept ? 'stream' : null; //move this later
-            callResponseCallback(accept, localStream);
-            console.log('onIncomingCall', senderUuid, remoteStream, localStream, accept);
+            if (accept) {
+                getLocalStream().then((myVideoStream) => {
+                    callResponseCallback(accept, myVideoStream, onRemoteVideoStreamAvailable);
+                });
+            } else {
+                callResponseCallback(accept);
+            }
         });
     };
 
-    const onCallResponse = (uuid, acceptCall, remoteStream) => {
-        console.log('onCallResponse', uuid, acceptCall, remoteStream);
+    const onCallResponse = (uuid, acceptCall, theirVideoStream) => {
+        console.log('onCallResponse', uuid, acceptCall, theirVideoStream);
     };
 
     // add the WebRTC plugin
@@ -74,13 +102,14 @@ ChatEngine.on('$.ready', (data) => {
 
         div.onclick = (e) => {
             let userToCall = e.target.textContent;
-            let localStream = getLocalStream();
-
-            if (ChatEngine.users[userToCall]) {
-                ChatEngine.global.webRTC.callUser(ChatEngine.users[userToCall], localStream);
-            } else {
-                throw Error('User you are trying to call does not exist');
-            }
+            getLocalStream().then((stream) => {
+                localStream = stream;
+                if (ChatEngine.users[userToCall]) {
+                    ChatEngine.global.webRTC.callUser(ChatEngine.users[userToCall], localStream, onRemoteVideoStreamAvailable);
+                } else {
+                    throw Error('User you are trying to call does not exist');
+                }
+            });
         }
 
         onlineOutput.appendChild(div);
