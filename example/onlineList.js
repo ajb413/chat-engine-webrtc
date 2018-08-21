@@ -21,7 +21,6 @@ const ChatEngine = ChatEngineCore.create({
 });
 
 function incomingCallModal(uuid) {
-    console.log('incomingCallModal', uuid);
     return new Promise((resolve) => {
         accept.onclick = function() {
             modal.classList.remove('visible');
@@ -39,7 +38,6 @@ function incomingCallModal(uuid) {
 }
 
 function getLocalStream() {
-    console.log('Requesting local stream');
     return new Promise((resolve, reject) => {
         navigator.mediaDevices
         .getUserMedia({
@@ -65,7 +63,6 @@ ChatEngine.on('$.ready', (data) => {
     // function to fire when the partner's video stream becomes available
     const onRemoteVideoStreamAvailable = (webRTCTrackEvent) => {
         let theirVideoStream = webRTCTrackEvent.streams[0];
-        console.log('onRemoteVideoStreamAvailable', theirVideoStream);
         theirVideoContainer.srcObject = theirVideoStream;
     };
 
@@ -73,7 +70,7 @@ ChatEngine.on('$.ready', (data) => {
         incomingCallModal(senderUuid).then((accept) => {
             if (accept) {
                 getLocalStream().then((myVideoStream) => {
-                    callResponseCallback(accept, myVideoStream, onRemoteVideoStreamAvailable);
+                    callResponseCallback(accept, onRemoteVideoStreamAvailable, myVideoStream);
                 });
             } else {
                 callResponseCallback(accept);
@@ -85,10 +82,15 @@ ChatEngine.on('$.ready', (data) => {
         console.log('onCallResponse', uuid, acceptCall, theirVideoStream);
     };
 
+    const onCallDisconnect = (uuid) => {
+        console.log('call disconnected', uuid);
+    };
+
     // add the WebRTC plugin
     let config = {
         onIncomingCall,
-        onCallResponse
+        onCallResponse,
+        onCallDisconnect
     };
 
     const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'](config);
@@ -105,7 +107,7 @@ ChatEngine.on('$.ready', (data) => {
             getLocalStream().then((stream) => {
                 localStream = stream;
                 if (ChatEngine.users[userToCall]) {
-                    ChatEngine.global.webRTC.callUser(ChatEngine.users[userToCall], localStream, onRemoteVideoStreamAvailable);
+                    window.callMe = ChatEngine.global.webRTC.callUser(ChatEngine.users[userToCall], onRemoteVideoStreamAvailable, localStream);
                 } else {
                     throw Error('User you are trying to call does not exist');
                 }
