@@ -5,7 +5,7 @@ const onlineOutput = document.getElementById('online-list');
 const myVideoContainer = document.getElementById('my-video');
 const theirVideoContainer = document.getElementById('their-video');
 const header = document.getElementById('header');
-const modal = document.getElementById('incoming-call-modal');
+const modal = document.getElementById('incoming-call-modal-background');
 const incommingSpan = document.getElementById('incomming');
 const accept = document.getElementById('accept');
 const reject = document.getElementById('reject');
@@ -56,7 +56,7 @@ function getLocalStream() {
 }
 
 ChatEngine.on('$.ready', (data) => {
-    let onlineEvents = 0;
+    let onlineUuids = [];
 
     header.innerHTML = '<b>Online Now</b><br>You are <b>' + username + '</b>';
 
@@ -97,10 +97,19 @@ ChatEngine.on('$.ready', (data) => {
 
     ChatEngine.global.plugin(webRTC);
 
+    // Add a user from the online list when they connect
     ChatEngine.global.on('$.online.*', (payload) => {
         let div = document.createElement("li");
-        div.innerHTML = payload.user.uuid;
+
+        div.innerHTML = div.id = payload.user.uuid;
         div.className += " list-group-item";
+
+        let alreadyInList = onlineUuids.findIndex(id => id === payload.user.uuid) > -1 ? true : false;
+        if (!alreadyInList) {
+            onlineUuids.push(payload.user.uuid);
+        } else {
+            return;
+        }
 
         div.onclick = (e) => {
             let userToCall = e.target.textContent;
@@ -115,8 +124,16 @@ ChatEngine.on('$.ready', (data) => {
         }
 
         onlineOutput.appendChild(div);
-        onlineEvents++;
     });
+
+    // Remove a user from the online list if they disconnect
+    ChatEngine.global.on('$.offline.*', (payload) => {
+        let index = onlineUuids.findIndex(id => id === payload.user.uuid);
+        onlineUuids.splice(index, 1);
+
+        let div = document.getElementById(payload.user.uuid);
+        div.remove();
+    })
 
 });
 
@@ -124,6 +141,6 @@ ChatEngine.connect(username, {
     signedOnTime: now
 }, 'auth-key');
 
-document.addEventListener('beforeunload', function() {
+window.onbeforeunload = function(event) {
     ChatEngine.disconnect();
-});
+};
