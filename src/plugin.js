@@ -2,6 +2,34 @@
  *
  */
 
+const rtcconfig = { iceServers : [{ "urls" :
+    navigator.mozGetUserMedia    ? "stun:stun.services.mozilla.com" :
+    navigator.webkitGetUserMedia ? "stun:stun.l.google.com:19302"   :
+                                   "stun:23.21.150.121"
+},
+    {urls: "stun:stun.l.google.com:19302"},
+    {urls: "stun:stun1.l.google.com:19302"},
+    {urls: "stun:stun2.l.google.com:19302"},
+    {urls: "stun:stun3.l.google.com:19302"},
+    {urls: "stun:stun4.l.google.com:19302"},
+    {urls: "stun:23.21.150.121"},
+    {urls: "stun:stun01.sipphone.com"},
+    {urls: "stun:stun.ekiga.net"},
+    {urls: "stun:stun.fwdnet.net"},
+    {urls: "stun:stun.ideasip.com"},
+    {urls: "stun:stun.iptel.org"},
+    {urls: "stun:stun.rixtelecom.se"},
+    {urls: "stun:stun.schlund.de"},
+    {urls: "stun:stunserver.org"},
+    {urls: "stun:stun.softjoys.com"},
+    {urls: "stun:stun.voiparound.com"},
+    {urls: "stun:stun.voipbuster.com"},
+    {urls: "stun:stun.voipstunt.com"},
+    {urls: "stun:stun.voxgratia.org"},
+    {urls: "stun:stun.xten.com"}
+] };
+
+
 function uuid() {
     function s4() {
         return Math.floor((1 + Math.random()) * 0x10000)
@@ -72,7 +100,7 @@ module.exports = (config) => {
             // If the local stream is not passed on plugin init, it can be passed here.
             localStream = localStream || this.localStream;
             let callId = uuid();
-            let peerConnection = new RTCPeerConnection();
+            let peerConnection = new RTCPeerConnection(rtcconfig);
             this.callCache[callId] = peerConnection;
 
             peerConnection.oniceconnectionstatechange = () => {
@@ -147,7 +175,7 @@ module.exports = (config) => {
                     }
 
                     let answerDescription;
-                    let peerConnection = new RTCPeerConnection();
+                    let peerConnection = new RTCPeerConnection(rtcconfig);
                     this.callCache[callId] = peerConnection;
 
                     // When ICE candidates become available, send them to the remote client
@@ -165,8 +193,6 @@ module.exports = (config) => {
                             this.onDisconnect(callId, sender.uuid);
                         }
                     };
-
-                    // localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
 
                     peerConnection.ontrack = onRemoteVideoStreamAvailable;
                     peerConnection.setRemoteDescription(remoteDescription)
