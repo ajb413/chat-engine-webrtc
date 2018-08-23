@@ -79,7 +79,7 @@ ChatEngine.on('$.ready', (data) => {
     };
 
     const onCallResponse = (uuid, acceptCall, theirVideoStream) => {
-        console.log('onCallResponse', uuid, acceptCall, theirVideoStream);
+        //
     };
 
     const onCallDisconnect = (uuid) => {

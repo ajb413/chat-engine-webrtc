@@ -2,32 +2,34 @@
  *
  */
 
-const rtcconfig = { iceServers : [{ "urls" :
-    navigator.mozGetUserMedia    ? "stun:stun.services.mozilla.com" :
-    navigator.webkitGetUserMedia ? "stun:stun.l.google.com:19302"   :
-                                   "stun:23.21.150.121"
-},
-    {urls: "stun:stun.l.google.com:19302"},
-    {urls: "stun:stun1.l.google.com:19302"},
-    {urls: "stun:stun2.l.google.com:19302"},
-    {urls: "stun:stun3.l.google.com:19302"},
-    {urls: "stun:stun4.l.google.com:19302"},
-    {urls: "stun:23.21.150.121"},
-    {urls: "stun:stun01.sipphone.com"},
-    {urls: "stun:stun.ekiga.net"},
-    {urls: "stun:stun.fwdnet.net"},
-    {urls: "stun:stun.ideasip.com"},
-    {urls: "stun:stun.iptel.org"},
-    {urls: "stun:stun.rixtelecom.se"},
-    {urls: "stun:stun.schlund.de"},
-    {urls: "stun:stunserver.org"},
-    {urls: "stun:stun.softjoys.com"},
-    {urls: "stun:stun.voiparound.com"},
-    {urls: "stun:stun.voipbuster.com"},
-    {urls: "stun:stun.voipstunt.com"},
-    {urls: "stun:stun.voxgratia.org"},
-    {urls: "stun:stun.xten.com"}
-] };
+const rtcconfig = {
+    iceServers: [{
+            "urls": navigator.mozGetUserMedia ? "stun:stun.services.mozilla.com"
+                  : navigator.webkitGetUserMedia ? "stun:stun.l.google.com:19302" :
+                  "stun:23.21.150.121"
+        },
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" },
+        { urls: "stun:23.21.150.121" },
+        { urls: "stun:stun01.sipphone.com" },
+        { urls: "stun:stun.ekiga.net" },
+        { urls: "stun:stun.fwdnet.net" },
+        { urls: "stun:stun.ideasip.com" },
+        { urls: "stun:stun.iptel.org" },
+        { urls: "stun:stun.rixtelecom.se" },
+        { urls: "stun:stun.schlund.de" },
+        { urls: "stun:stunserver.org" },
+        { urls: "stun:stun.softjoys.com" },
+        { urls: "stun:stun.voiparound.com" },
+        { urls: "stun:stun.voipbuster.com" },
+        { urls: "stun:stun.voipstunt.com" },
+        { urls: "stun:stun.voxgratia.org" },
+        { urls: "stun:stun.xten.com" }
+    ]
+};
 
 function uuid() {
     function s4() {
@@ -49,6 +51,21 @@ function onCallResponseNotDefined() {
 
 function onCallDisconnectNotDefined() {
     console.error('ChatEngine WebRTC Plugin: [onCallDisconnect] Call disconnect event handler is not defined.');
+}
+
+function onIceCandidate(iceEvent, user, peerConnection, callId) {
+    peerConnection.iceCache.push(iceEvent.candidate);
+
+    if (peerConnection.acceptedCall) {
+        sendIceCandidates(user, peerConnection, callId);
+    }
+}
+
+function sendIceCandidates(user, peerConnection, callId) {
+    user.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
+        callId,
+        candidates: peerConnection.iceCache
+    });
 }
 
 module.exports = (config) => {
@@ -101,6 +118,9 @@ module.exports = (config) => {
             let callId = uuid();
             let peerConnection = new RTCPeerConnection(rtcconfig);
             this.callCache[callId] = peerConnection;
+            peerConnection.ontrack = onRemoteVideoStreamAvailable;
+            peerConnection.addStream(localStream);
+            peerConnection.iceCache = [];
 
             peerConnection.oniceconnectionstatechange = () => {
                 if (peerConnection.iceConnectionState === 'disconnected') {
@@ -108,22 +128,14 @@ module.exports = (config) => {
                 }
             };
 
-            // Set local and remote video and audio streams to peer connection object.
-            peerConnection.ontrack = onRemoteVideoStreamAvailable;
-            peerConnection.addStream(localStream);
-
             // When ICE candidates become available, send them to the remote client.
             peerConnection.onicecandidate = (iceEvent) => {
-                if (iceEvent.candidate) {
-                    user.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
-                        callId,
-                        candidate: iceEvent.candidate
-                    });
-                }
+                if (!iceEvent.candidate) return;
+                onIceCandidate(iceEvent, user, peerConnection, callId);
             };
 
             let localDescription; // WebRTC local description
-            peerConnection.onnegotiationneeded = (one, two, three) => {
+            peerConnection.onnegotiationneeded = () => {
                 peerConnection.createOffer()
                 .then((description) => {
                     localDescription = description;
@@ -144,12 +156,20 @@ module.exports = (config) => {
             let sender = payload.sender;
 
             if (acceptCall) {
+                this.callCache[callId].acceptedCall = true;
+
                 // When a user accepts a call, they send their WebRTC peer connection description.
                 // Set it locally as the remote client's peer connection description.
                 this.callCache[callId].setRemoteDescription(description)
+                .then(() => {
+                    sendIceCandidates(sender, this.callCache[callId], callId);
+                })
                 .catch((error) => {
                     console.error('ChatEngine WebRTC Plugin: [callResponse]', error);
                 });
+
+            } else {
+                delete this.callCache[callId];
             }
 
             this.parentOnCallResponse(sender.uuid, acceptCall);
@@ -176,16 +196,8 @@ module.exports = (config) => {
                     let answerDescription;
                     let peerConnection = new RTCPeerConnection(rtcconfig);
                     this.callCache[callId] = peerConnection;
-
-                    // When ICE candidates become available, send them to the remote client
-                    peerConnection.onicecandidate = (iceEvent) => {
-                        if (iceEvent.candidate) {
-                            sender.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
-                                callId,
-                                candidate: iceEvent.candidate
-                            });
-                        }
-                    };
+                    peerConnection.ontrack = onRemoteVideoStreamAvailable;
+                    peerConnection.iceCache = [];
 
                     peerConnection.oniceconnectionstatechange = () => {
                         if (peerConnection.iceConnectionState === 'disconnected') {
@@ -193,7 +205,12 @@ module.exports = (config) => {
                         }
                     };
 
-                    peerConnection.ontrack = onRemoteVideoStreamAvailable;
+                    // When ICE candidates become available, send them to the remote client
+                    peerConnection.onicecandidate = (iceEvent) => {
+                        if (!iceEvent.candidate) return;
+                        onIceCandidate(iceEvent, sender, peerConnection, callId);
+                    };
+
                     peerConnection.setRemoteDescription(remoteDescription)
                     .then(() => {
                         return peerConnection.addStream(localStream);
@@ -203,6 +220,8 @@ module.exports = (config) => {
                         answerDescription = answer;
                         return peerConnection.setLocalDescription(answerDescription);
                     }).then(() => {
+                        peerConnection.acceptedCall = true;
+                        sendIceCandidates(sender, peerConnection, callId);
                         sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
                             callId,
                             acceptCall,
@@ -223,17 +242,17 @@ module.exports = (config) => {
         }
 
         incomingIceCandidate(payload) {
-            const { callId, candidate } = payload.data;
+            const { callId, candidates } = payload.data;
 
-            console.log('incomingIceCandidate', candidate.sdpMid, candidate.candidate, );
-
-            if (!this.callCache[callId] || typeof candidate !== 'object') {
+            if (!this.callCache[callId] || typeof candidates !== 'object') {
                 return;
             }
 
-            this.callCache[callId].addIceCandidate(candidate)
-            .catch((error) => {
-                console.error('ChatEngine WebRTC Plugin: [incomingIceCandidate]', error);
+            candidates.forEach((candidate) => {
+                this.callCache[callId].addIceCandidate(candidate)
+                .catch((error) => {
+                    console.error('ChatEngine WebRTC Plugin: [incomingIceCandidate]', error);
+                });
             });
         }
 
