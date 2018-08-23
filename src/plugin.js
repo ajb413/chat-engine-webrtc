@@ -2,33 +2,6 @@
  *
  */
 
-const rtcconfig = { iceServers : [{ "url" :
-    navigator.mozGetUserMedia    ? "stun:stun.services.mozilla.com" :
-    navigator.webkitGetUserMedia ? "stun:stun.l.google.com:19302"   :
-                                   "stun:23.21.150.121"
-}
-,   {url: "stun:stun.l.google.com:19302"}
-,   {url: "stun:stun1.l.google.com:19302"}
-,   {url: "stun:stun2.l.google.com:19302"}
-,   {url: "stun:stun3.l.google.com:19302"}
-,   {url: "stun:stun4.l.google.com:19302"}
-,   {url: "stun:23.21.150.121"}
-,   {url: "stun:stun01.sipphone.com"}
-,   {url: "stun:stun.ekiga.net"}
-,   {url: "stun:stun.fwdnet.net"}
-,   {url: "stun:stun.ideasip.com"}
-,   {url: "stun:stun.iptel.org"}
-,   {url: "stun:stun.rixtelecom.se"}
-,   {url: "stun:stun.schlund.de"}
-,   {url: "stun:stunserver.org"}
-,   {url: "stun:stun.softjoys.com"}
-,   {url: "stun:stun.voiparound.com"}
-,   {url: "stun:stun.voipbuster.com"}
-,   {url: "stun:stun.voipstunt.com"}
-,   {url: "stun:stun.voxgratia.org"}
-,   {url: "stun:stun.xten.com"}
-] };
-
 function uuid() {
     function s4() {
         return Math.floor((1 + Math.random()) * 0x10000)
@@ -99,9 +72,9 @@ module.exports = (config) => {
             // If the local stream is not passed on plugin init, it can be passed here.
             localStream = localStream || this.localStream;
             let callId = uuid();
-            let localDescription; // WebRTC local description
-            let peerConnection = new RTCPeerConnection(rtcconfig);
+            let peerConnection = new RTCPeerConnection();
             this.callCache[callId] = peerConnection;
+
             peerConnection.oniceconnectionstatechange = () => {
                 if (peerConnection.iceConnectionState === 'disconnected') {
                     this.onDisconnect(callId, user.uuid);
@@ -110,23 +83,33 @@ module.exports = (config) => {
 
             // Set local and remote video and audio streams to peer connection object.
             peerConnection.ontrack = onRemoteVideoStreamAvailable;
+            peerConnection.addStream(localStream);
 
-            if (localStream) {
-                localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
-            }
+            // When ICE candidates become available, send them to the remote client.
+            peerConnection.onicecandidate = (iceEvent) => {
+                if (iceEvent.candidate) {
+                    user.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
+                        callId,
+                        candidate: iceEvent.candidate
+                    });
+                }
+            };
 
-            peerConnection.createOffer()
-            .then((description) => {
-                localDescription = description;
-                return peerConnection.setLocalDescription(localDescription);
-            }).then(() => {
-                user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
-                    callId,
-                    description: localDescription
+            let localDescription; // WebRTC local description
+            peerConnection.onnegotiationneeded = (one, two, three) => {
+                peerConnection.createOffer()
+                .then((description) => {
+                    localDescription = description;
+                    return peerConnection.setLocalDescription(localDescription);
+                }).then(() => {
+                    user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
+                        callId,
+                        description: localDescription
+                    });
+                }).catch((error) => {
+                    console.error('ChatEngine WebRTC Plugin: [callUser]', error);
                 });
-            }).catch((error) => {
-                console.error('ChatEngine WebRTC Plugin: [callUser]', error);
-            });
+            };
         }
 
         callResponse(payload) {
@@ -134,16 +117,6 @@ module.exports = (config) => {
             let sender = payload.sender;
 
             if (acceptCall) {
-                // When ICE candidates become available, send them to the remote client.
-                this.callCache[callId].onicecandidate = (iceEvent) => {
-                    if (iceEvent.candidate) {
-                        sender.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
-                            callId,
-                            candidate: iceEvent.candidate
-                        });
-                    }
-                };
-
                 // When a user accepts a call, they send their WebRTC peer connection description.
                 // Set it locally as the remote client's peer connection description.
                 this.callCache[callId].setRemoteDescription(description)
@@ -174,7 +147,7 @@ module.exports = (config) => {
                     }
 
                     let answerDescription;
-                    let peerConnection = new RTCPeerConnection(rtcconfig);
+                    let peerConnection = new RTCPeerConnection();
                     this.callCache[callId] = peerConnection;
 
                     // When ICE candidates become available, send them to the remote client
@@ -193,11 +166,13 @@ module.exports = (config) => {
                         }
                     };
 
-                    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+                    // localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
 
                     peerConnection.ontrack = onRemoteVideoStreamAvailable;
                     peerConnection.setRemoteDescription(remoteDescription)
                     .then(() => {
+                        return peerConnection.addStream(localStream);
+                    }).then(() => {
                         return peerConnection.createAnswer();
                     }).then((answer) => {
                         answerDescription = answer;
@@ -225,7 +200,9 @@ module.exports = (config) => {
         incomingIceCandidate(payload) {
             const { callId, candidate } = payload.data;
 
-            if (!this.callCache[callId]) {
+            console.log('incomingIceCandidate', candidate.sdpMid, candidate.candidate, );
+
+            if (!this.callCache[callId] || typeof candidate !== 'object') {
                 return;
             }
 
