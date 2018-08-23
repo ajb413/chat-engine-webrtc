@@ -29,7 +29,6 @@ const rtcconfig = { iceServers : [{ "urls" :
     {urls: "stun:stun.xten.com"}
 ] };
 
-
 function uuid() {
     function s4() {
         return Math.floor((1 + Math.random()) * 0x10000)
