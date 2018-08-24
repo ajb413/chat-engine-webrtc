@@ -1,34 +1,22 @@
 /*
  *
  */
-
-const rtcconfig = {
+const bounceNonTurn = false;
+let rtcconfig;
+rtcconfig = {
     iceServers: [{
-            "urls": navigator.mozGetUserMedia ? "stun:stun.services.mozilla.com"
-                  : navigator.webkitGetUserMedia ? "stun:stun.l.google.com:19302" :
-                  "stun:23.21.150.121"
-        },
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" },
-        { urls: "stun:23.21.150.121" },
-        { urls: "stun:stun01.sipphone.com" },
-        { urls: "stun:stun.ekiga.net" },
-        { urls: "stun:stun.fwdnet.net" },
-        { urls: "stun:stun.ideasip.com" },
-        { urls: "stun:stun.iptel.org" },
-        { urls: "stun:stun.rixtelecom.se" },
-        { urls: "stun:stun.schlund.de" },
-        { urls: "stun:stunserver.org" },
-        { urls: "stun:stun.softjoys.com" },
-        { urls: "stun:stun.voiparound.com" },
-        { urls: "stun:stun.voipbuster.com" },
-        { urls: "stun:stun.voipstunt.com" },
-        { urls: "stun:stun.voxgratia.org" },
-        { urls: "stun:stun.xten.com" }
-    ]
+        'urls': [
+            'stun:w2.xirsys.com',
+            'turn:w2.xirsys.com:80?transport=udp',
+            'turn:w2.xirsys.com:3478?transport=udp',
+            'turn:w2.xirsys.com:80?transport=tcp',
+            'turn:w2.xirsys.com:3478?transport=tcp',
+            'turns:w2.xirsys.com:443?transport=tcp',
+            'turns:w2.xirsys.com:5349?transport=tcp'
+        ],
+        'credential': 'x',
+        'username': 'x'
+    }]
 };
 
 function uuid() {
@@ -114,12 +102,12 @@ module.exports = (config) => {
             }
 
             // If the local stream is not passed on plugin init, it can be passed here.
-            localStream = localStream || this.localStream;
+            // localStream = localStream || this.localStream;
             let callId = uuid();
             let peerConnection = new RTCPeerConnection(rtcconfig);
             this.callCache[callId] = peerConnection;
             peerConnection.ontrack = onRemoteVideoStreamAvailable;
-            peerConnection.addStream(localStream);
+            localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
             peerConnection.iceCache = [];
 
             peerConnection.oniceconnectionstatechange = () => {
@@ -130,14 +118,17 @@ module.exports = (config) => {
 
             // When ICE candidates become available, send them to the remote client.
             peerConnection.onicecandidate = (iceEvent) => {
+                console.log('ice candidate', iceEvent.candidate);
                 if (!iceEvent.candidate) return;
                 onIceCandidate(iceEvent, user, peerConnection, callId);
             };
 
             let localDescription; // WebRTC local description
             peerConnection.onnegotiationneeded = () => {
-                peerConnection.createOffer()
-                .then((description) => {
+                peerConnection.createOffer({
+                    offerToReceiveAudio: 1,
+                    offerToReceiveVideo: 1
+                }).then((description) => {
                     localDescription = description;
                     return peerConnection.setLocalDescription(localDescription);
                 }).then(() => {
@@ -152,7 +143,7 @@ module.exports = (config) => {
         }
 
         callResponse(payload) {
-            const {callId, acceptCall, description} = payload.data;
+            const { callId, acceptCall, description } = payload.data;
             let sender = payload.sender;
 
             if (acceptCall) {
@@ -161,12 +152,12 @@ module.exports = (config) => {
                 // When a user accepts a call, they send their WebRTC peer connection description.
                 // Set it locally as the remote client's peer connection description.
                 this.callCache[callId].setRemoteDescription(description)
-                .then(() => {
-                    sendIceCandidates(sender, this.callCache[callId], callId);
-                })
-                .catch((error) => {
-                    console.error('ChatEngine WebRTC Plugin: [callResponse]', error);
-                });
+                    .then(() => {
+                        sendIceCandidates(sender, this.callCache[callId], callId);
+                    })
+                    .catch((error) => {
+                        console.error('ChatEngine WebRTC Plugin: [callResponse]', error);
+                    });
 
             } else {
                 delete this.callCache[callId];
@@ -182,7 +173,7 @@ module.exports = (config) => {
 
             // Should be executed after this client accepts or rejects an incoming call.
             const callResponseCallback = (acceptCall, onRemoteVideoStreamAvailable, localStream) => {
-                localStream = localStream || this.localStream;
+                // localStream = localStream || this.localStream;
 
                 if (acceptCall) {
                     if (typeof onRemoteVideoStreamAvailable !== 'function') {
@@ -207,12 +198,8 @@ module.exports = (config) => {
 
                     // When ICE candidates become available, send them to the remote client
                     peerConnection.onicecandidate = (iceEvent) => {
-                        if (
-                            !iceEvent.candidate ||
-                            !iceEvent.candidate.candidate ||
-                            !iceEvent.candidate.sdpMid ||
-                            !iceEvent.candidate.sdpMLineIndex
-                        ) {
+                        console.log('ice candidate', iceEvent.candidate);
+                        if (!iceEvent.candidate) {
                             return;
                         }
 
@@ -220,24 +207,25 @@ module.exports = (config) => {
                     };
 
                     peerConnection.setRemoteDescription(remoteDescription)
-                    .then(() => {
-                        return peerConnection.addStream(localStream);
-                    }).then(() => {
-                        return peerConnection.createAnswer();
-                    }).then((answer) => {
-                        answerDescription = answer;
-                        return peerConnection.setLocalDescription(answerDescription);
-                    }).then(() => {
-                        peerConnection.acceptedCall = true;
-                        sendIceCandidates(sender, peerConnection, callId);
-                        sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
-                            callId,
-                            acceptCall,
-                            description: answerDescription
+                        .then(() => {
+                            localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+                            return Promise.resolve();
+                        }).then(() => {
+                            return peerConnection.createAnswer();
+                        }).then((answer) => {
+                            answerDescription = answer;
+                            return peerConnection.setLocalDescription(answerDescription);
+                        }).then(() => {
+                            peerConnection.acceptedCall = true;
+                            sendIceCandidates(sender, peerConnection, callId);
+                            sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
+                                callId,
+                                acceptCall,
+                                description: answerDescription
+                            });
+                        }).catch((error) => {
+                            console.error('ChatEngine WebRTC Plugin: [incomingCall]', error);
                         });
-                    }).catch((error) => {
-                        console.error('ChatEngine WebRTC Plugin: [incomingCall]', error);
-                    });
                 } else {
                     sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
                         callId,
@@ -252,15 +240,25 @@ module.exports = (config) => {
         incomingIceCandidate(payload) {
             const { callId, candidates } = payload.data;
 
+            console.log(typeof candidates, candidates);
+
             if (!this.callCache[callId] || typeof candidates !== 'object') {
                 return;
             }
 
             candidates.forEach((candidate) => {
+                //bounce all non TURN
+                if (bounceNonTurn && candidate.candidate.indexOf('typ relay') === -1) {
+                    console.log('bouncing', candidate.candidate);
+                    return;
+                }
+
+                console.log(true);
+
                 this.callCache[callId].addIceCandidate(candidate)
-                .catch((error) => {
-                    console.error('ChatEngine WebRTC Plugin: [incomingIceCandidate]', error);
-                });
+                    .catch((error) => {
+                        console.error('ChatEngine WebRTC Plugin: [incomingIceCandidate]', error);
+                    });
             });
         }
 
