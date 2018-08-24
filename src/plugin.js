@@ -207,7 +207,15 @@ module.exports = (config) => {
 
                     // When ICE candidates become available, send them to the remote client
                     peerConnection.onicecandidate = (iceEvent) => {
-                        if (!iceEvent.candidate) return;
+                        if (
+                            !iceEvent.candidate ||
+                            !iceEvent.candidate.candidate ||
+                            !iceEvent.candidate.sdpMid ||
+                            !iceEvent.candidate.sdpMLineIndex
+                        ) {
+                            return;
+                        }
+
                         onIceCandidate(iceEvent, sender, peerConnection, callId);
                     };
 
