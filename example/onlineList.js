@@ -84,6 +84,7 @@ ChatEngine.on('$.ready', (data) => {
 
     const onCallDisconnect = (uuid) => {
         console.log('call disconnected', uuid);
+        //localstram for each track track.stop();
     };
 
     // add the WebRTC plugin
