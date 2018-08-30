@@ -9,6 +9,7 @@ const modal = document.getElementById('incoming-call-modal-background');
 const incommingSpan = document.getElementById('incomming');
 const accept = document.getElementById('accept');
 const reject = document.getElementById('reject');
+const hangup = document.getElementById('hangup');
 
 let localStream;
 
@@ -16,7 +17,6 @@ const ChatEngine = ChatEngineCore.create({
     publishKey: 'pub-c-60a065cb-fe91-432c-b50e-bd4974cb1f01',
     subscribeKey: 'sub-c-7c977f32-a1b3-11e8-bc5d-ae80c5ea0c92'
 }, {
-    // debug: true,
     globalChannel: 'chat-engine-online-example'
 });
 
@@ -55,48 +55,57 @@ function getLocalStream() {
     });
 }
 
+function disconnect(user) {
+    user.webRTC.disconnect();
+}
+
+hangup.disabled = true;
+
 ChatEngine.on('$.ready', (data) => {
     let onlineUuids = [];
 
     header.innerHTML = '<b>Online Now</b><br>You are <b>' + username + '</b>';
 
     // function to fire when the partner's video stream becomes available
-    const onRemoteVideoStreamAvailable = (webRTCTrackEvent) => {
-        let theirVideoStream = webRTCTrackEvent.streams[0];
-        theirVideoContainer.srcObject = theirVideoStream;
+    const onPeerStream = (webRTCTrackEvent) => {
+        let peerStream = webRTCTrackEvent.streams[0];
+        theirVideoContainer.srcObject = peerStream;
     };
 
-    const onIncomingCall = (senderUuid, callResponseCallback) => {
-        incomingCallModal(senderUuid).then((accept) => {
-            if (accept) {
-                getLocalStream().then((myVideoStream) => {
-                    callResponseCallback(accept, onRemoteVideoStreamAvailable, myVideoStream);
+    const onIncomingCall = (user, callResponseCallback) => {
+        incomingCallModal(user.uuid).then((acceptedCall) => {
+            if (acceptedCall) {
+                getLocalStream().then((myStream) => {
+                    callResponseCallback({
+                        acceptedCall,
+                        myStream
+                    });
                 });
             } else {
-                callResponseCallback(accept);
+                callResponseCallback(acceptedCall);
             }
         });
     };
 
-    const onCallResponse = (uuid, acceptCall, theirVideoStream) => {
-        //
+    const onCallResponse = (one, two, three) => {
+        console.log('onCallResponse', one, two, three);
+        hangup.disabled = false;
     };
 
-    const onCallDisconnect = (uuid) => {
-        console.log('call disconnected', uuid);
-        //localstram for each track track.stop();
+    const onDisconnect = (one) => {
+        console.log('call disconnected', one);
     };
 
     // add the WebRTC plugin
     let config = {
         onIncomingCall,
         onCallResponse,
-        onCallDisconnect
+        onDisconnect,
+        onPeerStream,
     };
 
-    const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'](config);
-
-    ChatEngine.global.plugin(webRTC);
+    const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
+    ChatEngine.me.plugin(webRTC(config));
 
     // Add a user from the online list when they connect
     ChatEngine.global.on('$.online.*', (payload) => {
@@ -113,11 +122,12 @@ ChatEngine.on('$.ready', (data) => {
         }
 
         div.onclick = (e) => {
-            let userToCall = e.target.textContent;
+            let userToCall = ChatEngine.users[e.target.textContent];
             getLocalStream().then((stream) => {
-                localStream = stream;
-                if (ChatEngine.users[userToCall]) {
-                    window.callMe = ChatEngine.global.webRTC.callUser(ChatEngine.users[userToCall], onRemoteVideoStreamAvailable, localStream);
+                if (userToCall) {
+                    ChatEngine.me.webRTC.callUser(userToCall, {
+                        myStream: stream
+                    })
                 } else {
                     throw Error('User you are trying to call does not exist');
                 }
