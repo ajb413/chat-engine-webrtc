@@ -1,0 +1,191 @@
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0px;
+    font-family: sans-serif;
+    font-size: 20px;
+    color: #e6e6e6;
+}
+
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+h1 {
+    margin: 0px;
+    font-size: 30px;
+}
+
+.header {
+    display: table;
+    position: absolute;
+    height: 80px;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: solid 1px #FFFFFF;
+    z-index: 1;
+    color: #FFFFFF;
+}
+
+.header div {
+    display: table-cell;
+    position: relative;
+    vertical-align: middle;
+    background-color: #333333;
+}
+
+.header .left {
+    width: 250px;
+    text-align: center;
+}
+
+.header .middle {
+    width: auto;
+    text-align: center;
+}
+
+.header .right {
+    width: 250px;
+    height: inherit;
+    min-height: 100%;
+}
+
+.header video {
+    width: 100%;
+    height: 80px;
+}
+
+.online-list {
+    float: left;
+    width: 250px;
+    max-height: 100%;
+    overflow-y: scroll;
+    position: absolute;
+    box-sizing: border-box;
+    padding-top: 85px;
+}
+
+.online-list div {
+    width: 100%;
+    height: 60px;
+    text-align: left;
+    background-color: #101620;
+    box-sizing: border-box;
+    cursor: pointer;
+    border-bottom: solid 1px #6D7582;
+}
+
+.online-list img {
+    height: 100%;
+    border-radius: 50%;
+    float: left;
+    margin-right: 10px;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.online-list span {
+    display: block;
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.chat {
+    float: left;
+    max-height: 100%;
+    width: 100%;
+    overflow-y: scroll;
+    left: 250px;
+    padding-left: 250px;
+    padding-top: 85px;
+    box-sizing: border-box;
+}
+
+.log {
+    height: 100%;
+    width: 100%;
+    background-color: #363D48;
+    margin-bottom: 50px;
+}
+
+.log div {
+    padding: 8px;
+}
+
+.log b {
+    color: #FFFFFF;
+}
+
+.input-container textarea {
+    width: 100%;
+    height: 100%;
+    padding: 0px 5px;
+    margin: 0px;
+    box-sizing: border-box;
+    line-height: 24pt;
+    resize: none;
+    outline: none;
+    font-size: 14px;
+    border: solid 1px #e6e6e6;
+    background-color: #6D7582;
+    border-radius: 3px;
+    color: #FFFFFF;
+    font-family: inherit;
+}
+
+.input-container textarea::placeholder {
+    color: #FFFFFF;
+    font-family: sans-serif;
+}
+
+div.input-container {
+    position: fixed;
+    bottom: 0px;
+    height: 50px;
+    width: 100%;
+    background-color: #1E2531;
+    box-sizing: border-box;
+    padding-right: 250px;
+}
+
+.input-container div {
+    display: inline-block;
+    padding: 0px;
+}
+
+.input-container .textarea-container {
+    width: 100%;
+    height: 100%;
+    padding-right: 50px;
+    box-sizing: border-box;
+}
+
+.input-container .submit {
+    display: table;
+    top: 0px;
+    right: 250px;
+    position: absolute;
+    height: 100%;
+    width: 50px;
+    padding: 8px;
+    box-sizing: border-box;
+    fill: #FFFFFF;
+    user-select: none;
+    cursor: pointer;
+}
+
+.input-container .submit div {
+    display: table-cell;
+    height: 100%;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.input-container .submit div svg {
+    vertical-align: middle;
+}
