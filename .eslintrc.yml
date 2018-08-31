@@ -33,3 +33,5 @@ rules:
     - "error"
     - ignore:
         - state
+parserOptions:
+  sourceType: module

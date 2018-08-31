@@ -1,281 +1,385 @@
-/*
- *
+/**
+ * @file ChatEngine plugin for WebRTC video and audio calling.
+ * @author Adam Bavosa <adamb@pubnub.com>
  */
-const bounceNonTurn = false;
-let rtcconfig;
-rtcconfig = {
-    iceServers: [{
-        'urls': [
-            'stun:w2.xirsys.com',
-            'turn:w2.xirsys.com:80?transport=udp',
-            'turn:w2.xirsys.com:3478?transport=udp',
-            'turn:w2.xirsys.com:80?transport=tcp',
-            'turn:w2.xirsys.com:3478?transport=tcp',
-            'turns:w2.xirsys.com:443?transport=tcp',
-            'turns:w2.xirsys.com:5349?transport=tcp'
-        ],
-        'credential': 'x',
-        'username': 'x'
-    }]
-};
 
-function uuid() {
-    function s4() {
-        return Math.floor((1 + Math.random()) * 0x10000)
-            .toString(16)
-            .substring(1);
+import {
+    onIncomingCallNotDefined,
+    onCallResponseNotDefined,
+    onPeerStreamNotDefined,
+    onDisconnectNotDefined,
+    chatEngineError
+} from './helpers/error-handlers.js';
+
+import {
+    uuid,
+    eventNames
+} from './helpers/util.js';
+
+const incomingCallEvent = eventNames.incomingCallEvent;
+const callResponseEvent = eventNames.callResponseEvent;
+const peerIceCandidateEvent = eventNames.peerIceCandidateEvent;
+let config;
+
+/*
+ * WebRtcPhone has a `construct` method instead of a conventional `constructor`
+ *     method. This is called from within ChatEngine during the plugin init
+ *     process. The class extends a ChatEngine type based on the module export's
+ *     `extends`. This plugin extends only the instance of the `Me` object in
+ *     the ChatEngine instance.
+ *
+ * @class
+ * @classdesc WebRtcPhone can extend any ChatEngine class type and it should be
+ *     used as a singleton. By default, it extends the `Me` instance of a
+ *     ChatEngine instance using the `plugin` method for initialization. It 
+ *     exposes a `callUser` and a `disconnect` method. The instance encapsulates
+ *     all the necessary logic and events for orchestrating a WebRTC connection.
+ *     The class attempts a peer to peer connection at first. It can fallback to
+ *     a TURN connection if server information is provided in the configuration.
+ *     All of the WebRTC signaling is done using ChatEngine `direct` events. For
+ *     this reason using `on` methods from the parent are not encouraged, so
+ *     event handlers like `onIncomingCall`, `onCallResponse`, `onPeerStream`,
+ *     and `onDisconnect` need to be passed to ` the class instance. Errors are
+ *     logged using `ChatEngine.throwError`.
+ */
+class WebRtcPhone {
+    /*
+     * Construct is a method called from ChatEngine during the plugin
+     *     initialization process. It extends the object that `plugin` is called
+     *     on.
+     *
+     * @param {function} [onIncomingCall] Function passed from the parent that
+     *     executes when a `direct` event fires for an incoming WebRTC call. If
+     *     a handler is not passed in the plugin configuration, an error will be
+     *     thrown every time the event fires.
+     * @param {function} [onCallResponse] Function passed from the parent that
+     *     executes when a `direct` event fires for a call reply. If a handler
+     *     is not passed in the plugin configuration, an error will be thrown
+     *     every time the event fires.
+     * @param {function} [onPeerStream] Function passed from the parent that
+     *     executes when a the peer's stream object becomes available. If a
+     *     handler is not passed in the plugin configuration, an error will be
+     *     thrown every time the event fires.
+     * @param {function} [onDisconnect] Function passed from the parent that
+     *     executes when a user in the call disconnects. If a handler is not
+     *     passed in the plugin configuration, an error will be thrown every
+     *     time the event fires.
+     * @param {object} [myStream] A browser `MediaStream` object of the local
+     *     client audio and/or video.
+     * @param {object} [rtcConfig] An `RTCConfiguration` dictionary that is used
+     *     to initialize the `RTCPeerConnection`. This is where STUN and TURN
+     *     server information should be provided.
+     * @param {boolean} [ignoreNonTurn] If true, this will force the ICE
+     *     candidate registration to ignore all candidates that are not TURN 
+     *     servers.
+     *
+     * @returns {void}
+     */
+    construct() {
+        this.onIncomingCall = config.onIncomingCall || onIncomingCallNotDefined;
+        this.onCallResponse = config.onCallResponse || onCallResponseNotDefined;
+        this.onPeerStream = config.onPeerStream || onPeerStreamNotDefined;
+        this.onDisconnect = config.onDisconnect || onDisconnectNotDefined;
+        this.myStream = config.myStream;
+        this.rtcConfig = config.rtcConfig;
+        this.ignoreNonTurn = config.ignoreNonTurn;
+
+        // ChatEngine Direct event handler for incoming call requests.
+        this.ChatEngine.me.direct.on(incomingCallEvent, (payload) => {
+            incomingCall.call(this, payload);
+        });
+
+        // ChatEngine Direct event handler for call responses.
+        this.ChatEngine.me.direct.on(callResponseEvent, (payload) => {
+            callResponse.call(this, payload);
+        });
+
+        // ChatEngine Direct event handler for receiving new peer ICE candidates
+        this.ChatEngine.me.direct.on(peerIceCandidateEvent, (payload) => {
+            peerIceCandidate.call(this, payload);
+        });
     }
-    return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
+
+    /*
+     * Initialize a WebRTC call with another ChatEngine user that is online.
+     *     This is called from parent.
+     *
+     * @param {object} user ChatEngine user object of the user this client
+     *     intends to call.
+     * @param {object} object
+     * @param {function} object.onPeerStream Event handler for when a peer's
+     *     stream becomes available. This will overwrite a handler that was
+     *     passed on initialization.
+     * @param {object} object.myStream A browser `MediaStream` object of the
+     *     local client audio and/or video. This will overwrite a stream that
+     *     was passed on initialization.
+     * @param {object} object.offerOptions An `RTCOfferOptions` dictionary that
+     *     specifies audio and/or video for the peer connection offer.
+     * @param {object} object.rtcConfig An `RTCConfiguration` dictionary that is
+     *     used to initialize the `RTCPeerConnection`. This will overwrite an
+     *     `rtcConfig` that was passed on initialization.
+     *
+     * @returns {void}
+     */
+    callUser(user, { onPeerStream, myStream, offerOptions, rtcConfig }) {
+        rtcConfig = this.rtcConfig = rtcConfig || this.rtcConfig;
+        myStream = this.myStream = myStream || this.myStream;
+        onPeerStream = this.onPeerStream = onPeerStream || this.onPeerStream;
+        offerOptions = offerOptions || {
+            offerToReceiveAudio: 1,
+            offerToReceiveVideo: 1
+        };
+        const peerConnection = this.peerConnection
+            = new RTCPeerConnection(rtcConfig);
+        const callId = this.callId = uuid(); // Call ID
+        let localDescription; // WebRTC local description
+        peerConnection.ontrack = onPeerStream;
+        myStream.getTracks().forEach((track) => {
+            peerConnection.addTrack(track, myStream);
+        });
+        peerConnection.iceCache = [];
+
+        peerConnection.oniceconnectionstatechange = () => {
+            if (peerConnection.iceConnectionState === 'disconnected') {
+                this.disconnect();
+            }
+        };
+
+        // When ICE candidates become available, send them to the peer client.
+        peerConnection.onicecandidate = (iceEvent) => {
+            if (!iceEvent.candidate) {
+                return;
+            }
+            onIceCandidate(iceEvent, user, peerConnection, callId);
+        };
+
+        peerConnection.onnegotiationneeded = () => {
+            peerConnection.createOffer(offerOptions)
+            .then((description) => {
+                localDescription = description;
+                return peerConnection.setLocalDescription(localDescription);
+            }).then(() => {
+                user.direct.emit(incomingCallEvent, {
+                    callId,
+                    rtcConfig,
+                    description: localDescription
+                });
+            }).catch((error) => {
+                const functionName = 'callUser';
+                const message = `WebRTC [${functionName}] error.`;
+                chatEngineError(this.ChatEngine, functionName, message, error);
+            });
+        };
+    }
+
+    /*
+     * Gracefully closes the currently open WebRTC call. This is called from
+     *     parent.
+     *
+     * @returns {void}
+     */
+    disconnect() {
+        this.peerConnection.close();
+        delete this.peerConnection;
+        this.callInSession = false;
+        this.onDisconnect();
+    }
 }
 
-function onIncomingCallNotDefined(callback) {
-    console.error('ChatEngine WebRTC Plugin: [onIncomingCall] Incoming call event handler is not defined.');
-    callback(false);
+/*
+ * This event fires when the call peer has indicated whether they will accept or
+ *     reject an incoming call. The trigger is a ChatEngine `direct` event in
+ *     the WebRtcPhone class.
+ *
+ * @param {object} payload A ChatEngine `direct` event payload.
+ *
+ * @returns {void}
+ */
+function callResponse(payload) {
+    const { callId, acceptedCall } = payload.data;
+    const remoteDescription = payload.data.description;
+    let sender = payload.sender;
+
+    if (acceptedCall) {
+        this.peerConnection.acceptedCall = true;
+        this.callInSession = true;
+
+        this.peerConnection.setRemoteDescription(remoteDescription)
+            .then(() => {
+                sendIceCandidates(sender, this.peerConnection, callId);
+            })
+            .catch((error) => {
+                const functionName = 'callResponse';
+                const message = `WebRTC [${functionName}] error.`;
+                chatEngineError(this.ChatEngine, functionName, message, error);
+            });
+    }
+
+    this.onCallResponse(acceptedCall);
 }
 
-function onCallResponseNotDefined() {
-    console.error('ChatEngine WebRTC Plugin: [onCallResponse] Call response event handler is not defined.');
+/*
+ * This event fires when a call peer has attempted to initiate a call. The
+ *      trigger is a ChatEngine `direct` event in the WebRtcPhone class.
+ *
+ * @param {object} payload A ChatEngine `direct` event payload.
+ *
+ * @returns {void}
+ */
+function incomingCall(payload) {
+    const sender = payload.sender;
+    const { callId, rtcConfig } = payload.data;
+    const remoteDescription = payload.data.description;
+
+    // Is executed after this client accepts or rejects an incoming call, which
+    // is typically done in their UI.
+    const callResponseCallback = (params) => {
+        let { acceptedCall, onPeerStream, myStream } = params;
+        myStream = this.myStream = myStream || this.myStream;
+        onPeerStream = onPeerStream || this.onPeerStream;
+
+        if (acceptedCall) {
+            if (typeof myStream !== 'object') {
+                const functionName = 'incomingCall';
+                const message = `WebRTC [${functionName}]:` +
+                    `No local video stream defined.`;
+                chatEngineError(this.ChatEngine, functionName, message, error);
+            }
+
+            let localDescription;
+            const peerConnection = this.peerConnection
+                = new RTCPeerConnection(rtcConfig);
+            peerConnection.ontrack = onPeerStream;
+            peerConnection.iceCache = [];
+            myStream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, myStream);
+            });
+
+            peerConnection.oniceconnectionstatechange = () => {
+                if (peerConnection.iceConnectionState === 'disconnected') {
+                    this.disconnect();
+                }
+            };
+
+            // Send ICE candidates to peer as they come available locally.
+            peerConnection.onicecandidate = (iceEvent) => {
+                if (!iceEvent.candidate) {
+                    return;
+                }
+
+                onIceCandidate(iceEvent, sender, peerConnection, callId);
+            };
+
+            peerConnection.setRemoteDescription(remoteDescription)
+                .then(() => {
+                    return peerConnection.createAnswer();
+                }).then((answer) => {
+                    localDescription = answer;
+                    return peerConnection.setLocalDescription(localDescription);
+                }).then(() => {
+                    peerConnection.acceptedCall = true;
+                    this.callInSession = true;
+                    sendIceCandidates(sender, peerConnection, callId);
+                    sender.direct.emit(callResponseEvent, {
+                        callId,
+                        acceptedCall,
+                        description: localDescription
+                    });
+                }).catch((error) => {
+                    const chatEngine = this.ChatEngine;
+                    const functionName = 'incomingCall';
+                    const message = `WebRTC [${functionName}] error.`;
+                    chatEngineError(chatEngine, functionName, message, error);
+                });
+        } else {
+            sender.direct.emit(callResponseEvent, {
+                callId,
+                acceptedCall
+            });
+        }
+    }
+
+    this.onIncomingCall(sender, callResponseCallback);
 }
 
-function onCallDisconnectNotDefined() {
-    console.error('ChatEngine WebRTC Plugin: [onCallDisconnect] Call disconnect event handler is not defined.');
-}
-
+/*
+ * This event fires when the local WebRTC connection has received a new ICE
+ *     candidate.
+ *
+ * @param {object} iceEvent A `RTCPeerConnectionIceEvent` for the local client.
+ * @param {object} user A ChatEngine user object for the peer to send the ICE
+ *     candidate to.
+ * @param {object} peerConnection The local `RTCPeerConnection` object.
+ * @param {string} callId A UUID for the unique call.
+ *
+ * @returns {void}
+ */
 function onIceCandidate(iceEvent, user, peerConnection, callId) {
     peerConnection.iceCache.push(iceEvent.candidate);
-
     if (peerConnection.acceptedCall) {
         sendIceCandidates(user, peerConnection, callId);
     }
 }
 
+/*
+ * This sends an array of ICE candidates
+ *
+ * @param {object} user A ChatEngine user object for the peer to send the ICE
+ *     candidate to.
+ * @param {object} peerConnection The local `RTCPeerConnection` object.
+ * @param {string} callId A UUID for the unique call.
+ *
+ * @returns {void}
+ */
 function sendIceCandidates(user, peerConnection, callId) {
-    user.direct.emit(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), {
+    user.direct.emit(peerIceCandidateEvent, {
         callId,
         candidates: peerConnection.iceCache
     });
 }
 
-module.exports = (config) => {
-    class extension {
-        construct() {
-            // Holds RTCPeerConnection objects for each call. Key is the call ID (a UUID).
-            this.callCache = {};
+/*
+ * This event fires when the peer WebRTC client sends a new ICE candidate. This
+ *     event registers the candidate with the local `RTCPeerConnection` object.
+ *
+ * @param {object} payload A ChatEngine `direct` event payload.
+ *
+ * @returns {void}
+ */
+function peerIceCandidate(payload) {
+    const { peerConnection, ignoreNonTurn } = this;
+    const { callId, candidates } = payload.data;
 
-            // [config.onIncomingCall] must be defined on init, otherwise incoming call event will log an error.
-            // The event is meant to trigger UI for the user to accept or reject an incoming call.
-            this.parentOnIncomingCall = config.onIncomingCall || onIncomingCallNotDefined;
+    if (typeof candidates !== 'object' || !peerConnection) {
+        return;
+    }
 
-            // [config.onCallResponse] must be defined on init, otherwise call response event will log an error.
-            // The event is meant to give the user an opportunity to handle a call response.
-            this.parentOnCallResponse = config.onCallResponse || onCallResponseNotDefined;
-
-            // [config.onCallDisconnect] must be defined on init, otherwise disconnect call event will log an error.
-            // The event is meant to notify the user that the call has ended in the UI.
-            this.parentOnCallDisconnect = config.onCallDisconnect || onCallDisconnectNotDefined;
-
-            // Video and audio stream from local client camera and microphone.
-            // Optional to pass now, can be passed later when a call is accepted.
-            this.localStream = config.localStream;
-
-            // ChatEngine Direct event handler for incoming call requests.
-            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'incomingCall'].join('.'), (payload) => {
-                this.incomingCall(payload);
-            });
-
-            // ChatEngine Direct event handler for call responses.
-            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'callResponse'].join('.'), (payload) => {
-                this.callResponse(payload);
-            });
-
-            // ChatEngine Direct event handler for new ICE candidates for RTCPeerConnection object.
-            // WebRTC client tells the remote client their ICE candidates through this signal.
-            this.ChatEngine.me.direct.on(['$' + 'webRTC', 'incomingIceCandidate'].join('.'), (payload) => {
-                this.incomingIceCandidate(payload);
-            });
+    candidates.forEach((candidate) => {
+        // Ignore all non-TURN ICE candidates if specified in config.
+        if (ignoreNonTurn && candidate.candidate.indexOf('typ relay') === -1) {
+            return;
         }
 
-        callUser(user, onRemoteVideoStreamAvailable, localStream) {
-            if (user.name === 'Me') {
-                console.error('ChatEngine WebRTC Plugin: [callUser] Calling self is not allowed.');
-                return;
-            }
-
-            // If the local stream is not passed on plugin init, it can be passed here.
-            // localStream = localStream || this.localStream;
-            let callId = uuid();
-            let peerConnection = new RTCPeerConnection(rtcconfig);
-            this.callCache[callId] = peerConnection;
-            peerConnection.ontrack = onRemoteVideoStreamAvailable;
-            localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
-            peerConnection.iceCache = [];
-
-            peerConnection.oniceconnectionstatechange = () => {
-                if (peerConnection.iceConnectionState === 'disconnected') {
-                    this.onDisconnect(callId, user.uuid);
-                }
-            };
-
-            // When ICE candidates become available, send them to the remote client.
-            peerConnection.onicecandidate = (iceEvent) => {
-                console.log('ice candidate', iceEvent.candidate);
-                if (!iceEvent.candidate) return;
-                onIceCandidate(iceEvent, user, peerConnection, callId);
-            };
-
-            let localDescription; // WebRTC local description
-            peerConnection.onnegotiationneeded = () => {
-                peerConnection.createOffer({
-                    offerToReceiveAudio: 1,
-                    offerToReceiveVideo: 1
-                }).then((description) => {
-                    localDescription = description;
-                    return peerConnection.setLocalDescription(localDescription);
-                }).then(() => {
-                    user.direct.emit(['$' + 'webRTC', 'incomingCall'].join('.'), {
-                        callId,
-                        description: localDescription
-                    });
-                }).catch((error) => {
-                    console.error('ChatEngine WebRTC Plugin: [callUser]', error);
-                });
-            };
-        }
-
-        callResponse(payload) {
-            const { callId, acceptCall, description } = payload.data;
-            let sender = payload.sender;
-
-            if (acceptCall) {
-                this.callCache[callId].acceptedCall = true;
-
-                // When a user accepts a call, they send their WebRTC peer connection description.
-                // Set it locally as the remote client's peer connection description.
-                this.callCache[callId].setRemoteDescription(description)
-                    .then(() => {
-                        sendIceCandidates(sender, this.callCache[callId], callId);
-                    })
-                    .catch((error) => {
-                        console.error('ChatEngine WebRTC Plugin: [callResponse]', error);
-                    });
-
-            } else {
-                delete this.callCache[callId];
-            }
-
-            this.parentOnCallResponse(sender.uuid, acceptCall);
-        }
-
-        incomingCall(payload) {
-            const sender = payload.sender;
-            const { callId } = payload.data;
-            const remoteDescription = payload.data.description;
-
-            // Should be executed after this client accepts or rejects an incoming call.
-            const callResponseCallback = (acceptCall, onRemoteVideoStreamAvailable, localStream) => {
-                // localStream = localStream || this.localStream;
-
-                if (acceptCall) {
-                    if (typeof onRemoteVideoStreamAvailable !== 'function') {
-                        console.error('ChatEngine WebRTC Plugin: [incomingCall] onRemoteVideoStreamAvailable handler is not defined.');
-                    }
-
-                    if (typeof localStream !== 'object') {
-                        console.error('ChatEngine WebRTC Plugin: Local video stream object is not defined.');
-                    }
-
-                    let answerDescription;
-                    let peerConnection = new RTCPeerConnection(rtcconfig);
-                    this.callCache[callId] = peerConnection;
-                    peerConnection.ontrack = onRemoteVideoStreamAvailable;
-                    peerConnection.iceCache = [];
-
-                    peerConnection.oniceconnectionstatechange = () => {
-                        if (peerConnection.iceConnectionState === 'disconnected') {
-                            this.onDisconnect(callId, sender.uuid);
-                        }
-                    };
-
-                    // When ICE candidates become available, send them to the remote client
-                    peerConnection.onicecandidate = (iceEvent) => {
-                        console.log('ice candidate', iceEvent.candidate);
-                        if (!iceEvent.candidate) {
-                            return;
-                        }
-
-                        onIceCandidate(iceEvent, sender, peerConnection, callId);
-                    };
-
-                    peerConnection.setRemoteDescription(remoteDescription)
-                        .then(() => {
-                            localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
-                            return Promise.resolve();
-                        }).then(() => {
-                            return peerConnection.createAnswer();
-                        }).then((answer) => {
-                            answerDescription = answer;
-                            return peerConnection.setLocalDescription(answerDescription);
-                        }).then(() => {
-                            peerConnection.acceptedCall = true;
-                            sendIceCandidates(sender, peerConnection, callId);
-                            sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
-                                callId,
-                                acceptCall,
-                                description: answerDescription
-                            });
-                        }).catch((error) => {
-                            console.error('ChatEngine WebRTC Plugin: [incomingCall]', error);
-                        });
-                } else {
-                    sender.direct.emit(['$' + 'webRTC', 'callResponse'].join('.'), {
-                        callId,
-                        acceptCall
-                    });
-                }
-            }
-
-            this.parentOnIncomingCall(sender.uuid, callResponseCallback);
-        }
-
-        incomingIceCandidate(payload) {
-            const { callId, candidates } = payload.data;
-
-            console.log(typeof candidates, candidates);
-
-            if (!this.callCache[callId] || typeof candidates !== 'object') {
-                return;
-            }
-
-            candidates.forEach((candidate) => {
-                //bounce all non TURN
-                if (bounceNonTurn && candidate.candidate.indexOf('typ relay') === -1) {
-                    console.log('bouncing', candidate.candidate);
+        peerConnection.addIceCandidate(candidate)
+            .catch((error) => {
+                // No need to log errors for invalid ICE candidates
+                if (error.message === 'Error processing ICE candidate') {
                     return;
                 }
 
-                console.log(true);
-
-                this.callCache[callId].addIceCandidate(candidate)
-                    .catch((error) => {
-                        console.error('ChatEngine WebRTC Plugin: [incomingIceCandidate]', error);
-                    });
+                const functionName = 'peerIceCandidate';
+                const message = `ChatEngine WebRTC [${functionName}] error.`;
+                chatEngineError(this.ChatEngine, functionName, message, error);
             });
-        }
+    });
+}
 
-        onDisconnect(callId, userUuid) {
-            this.callCache[callId].close();
-            delete this.callCache[callId];
-            this.parentOnCallDisconnect(userUuid);
-        }
-    }
-
-    let emit = {};
-
+module.exports = (configuration = {}) => {
+    config = configuration;
     return {
         namespace: 'webRTC',
         extends: {
-            Chat: extension
-        },
-        middleware: {}
+            Me: WebRtcPhone
+        }
     }
 };

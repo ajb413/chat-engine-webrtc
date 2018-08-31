@@ -3,3 +3,8 @@
 Adds the ability to do WebRTC video in ChatEngine Chat
 
 ### Quick Start
+
+## Example
+```javascript
+// coming soon
+```
