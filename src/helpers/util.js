@@ -23,42 +23,6 @@ function uuid() {
     );
 }
 
-function onIceCandidate(iceEvent, user, peerConnection, callId) {
-    peerConnection.iceCache.push(iceEvent.candidate);
-    if (peerConnection.acceptedCall) {
-        sendIceCandidates(user, peerConnection, callId);
-    }
-}
-
-function sendIceCandidates(user, peerConnection, callId) {
-    user.direct.emit(peerIceCandidateEvent, {
-        callId,
-        candidates: peerConnection.iceCache
-    });
-}
-
-function peerIceCandidate(payload, peerConnection, ignoreNonTurn) {
-    const { callId, candidates } = payload.data;
-
-    if (typeof candidates !== 'object' || !peerConnection) {
-        return;
-    }
-
-    candidates.forEach((candidate) => {
-        // Ignore all non-TURN ICE candidates if specified in config.
-        if (ignoreNonTurn && candidate.candidate.indexOf('typ relay') === -1) {
-            return;
-        }
-
-        peerConnection.addIceCandidate(candidate)
-            .catch((error) => {
-                const functionName = 'peerIceCandidate';
-                const message = `ChatEngine WebRTC [${functionName}] error.`;
-                console.error(message, error);
-            });
-    });
-}
-
 const eventNames = {
     peerIceCandidateEvent,
     incomingCallEvent,
@@ -67,8 +31,5 @@ const eventNames = {
 
 module.exports = {
     uuid,
-    onIceCandidate,
-    sendIceCandidates,
-    peerIceCandidate,
     eventNames
 };

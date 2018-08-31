@@ -13,6 +13,21 @@ const hangup = document.getElementById('hangup');
 
 let localStream;
 
+let rtcConfig = {
+    iceServers: [{
+        'urls': [
+            'turn:w2.xirsys.com:80?transport=udp',
+            'turn:w2.xirsys.com:3478?transport=udp',
+            'turn:w2.xirsys.com:80?transport=tcp',
+            'turn:w2.xirsys.com:3478?transport=tcp',
+            'turns:w2.xirsys.com:443?transport=tcp',
+            'turns:w2.xirsys.com:5349?transport=tcp'
+        ],
+        'credential': '35426d02-a7c3-11e8-98a1-f9e0e877debe',
+        'username': '35426bfe-a7c3-11e8-a8bd-e7d0be3af999'
+    }]
+};
+
 const ChatEngine = ChatEngineCore.create({
     publishKey: 'pub-c-60a065cb-fe91-432c-b50e-bd4974cb1f01',
     subscribeKey: 'sub-c-7c977f32-a1b3-11e8-bc5d-ae80c5ea0c92'
@@ -102,6 +117,8 @@ ChatEngine.on('$.ready', (data) => {
         onCallResponse,
         onDisconnect,
         onPeerStream,
+        // rtcConfig,
+        // ignoreNonTurn: true
     };
 
     const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
