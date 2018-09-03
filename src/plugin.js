@@ -179,8 +179,11 @@ class WebRtcPhone {
      * @returns {void}
      */
     disconnect() {
-        this.peerConnection.close();
-        delete this.peerConnection;
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            delete this.peerConnection;
+        }
+
         this.callInSession = false;
         this.onDisconnect();
     }
@@ -336,6 +339,9 @@ function sendIceCandidates(user, peerConnection, callId) {
         callId,
         candidates: peerConnection.iceCache
     });
+
+    // Purge ICE candidate cache after it gets sent to peer.
+    peerConnection.iceCache = [];
 }
 
 /*

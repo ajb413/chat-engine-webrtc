@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0">
     <title>PubNub ChatEngine</title>
     <link rel="stylesheet" type="text/css" href="./style.css">
 </head>
@@ -39,7 +40,7 @@
         <div class="user-input-modal">
             <h3>Video Call</h3>
             <p>
-                Call user <b id="call-from"></b>?
+                Call user <b id="call-confirm-username"></b>?
             </p>
             <div id="yes-call" class="modal-button">
                 Yes
@@ -62,7 +63,7 @@
         <img class="hide" id="broken-my-video" src="./broken-camera.png">
     </div>
 
-    <div id="chat-interface" class="">
+    <div id="chat-interface" class="chat-interface">
         <div class="header">
             <div class="left">Online Now</div>
             <div class="middle">
