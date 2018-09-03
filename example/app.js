@@ -31,26 +31,14 @@ const submit = document.getElementById('submit');
 const hide = 'hide';
 const uuid = newUuid();
 
-const rtcConfig = {
-    iceServers: [{
-        'urls': [
-            'turn:w2.xirsys.com:80?transport=udp',
-            'turn:w2.xirsys.com:3478?transport=udp',
-            'turn:w2.xirsys.com:80?transport=tcp',
-            'turn:w2.xirsys.com:3478?transport=tcp',
-            'turns:w2.xirsys.com:443?transport=tcp',
-            'turns:w2.xirsys.com:5349?transport=tcp'
-        ],
-        'credential': '35426d02-a7c3-11e8-98a1-f9e0e877debe',
-        'username': '35426bfe-a7c3-11e8-a8bd-e7d0be3af999'
-    }]
-};
+// An RTCConfiguration dictionary from the browser WebRTC API
+// Add STUN and TURN server information here for WebRTC calling
+const rtcConfig = {};
 
 let username;
 let localStream;
 
-getLocalStream()
-.then((myStream) => {
+getLocalStream().then((myStream) => {
     localStream = myStream;
     myVideoSample.srcObject = localStream;
     myVideo.srcObject = localStream;
@@ -70,8 +58,12 @@ getLocalUserName().then((myUsername) => {
     }, 'auth-key');
 });
 
-messageInput.addEventListener('keyup', (event) => {
-    if (event.keyCode === 13 && !event.shiftKey) {
+messageInput.addEventListener('keydown', (event) => {
+    if (
+        event.keyCode === 13 &&
+        !event.shiftKey && 
+        messageInput.value !== ''
+    ) {
         sendMessage();
     }
 });
@@ -84,6 +76,10 @@ closeVideoButton.addEventListener('click', (event) => {
     ChatEngine.me.webRTC.disconnect();
 });
 
+window.onbeforeunload = (event) => {
+    ChatEngine.disconnect();
+};
+
 const ChatEngine = ChatEngineCore.create({
     publishKey: 'pub-c-60a065cb-fe91-432c-b50e-bd4974cb1f01',
     subscribeKey: 'sub-c-7c977f32-a1b3-11e8-bc5d-ae80c5ea0c92'
@@ -91,13 +87,145 @@ const ChatEngine = ChatEngineCore.create({
     globalChannel: 'chat-engine-webrtc-example'
 });
 
+ChatEngine.on('$.ready', (data) => {
+    let onlineUuids = [];
+
+    const onPeerStream = (webRTCTrackEvent) => {
+        console.log('Peer a/v stream now available');
+        const peerStream = webRTCTrackEvent.streams[0];
+        remoteVideo.srcObject = peerStream;
+    };
+
+    const onIncomingCall = (user, callResponseCallback) => {
+        console.log('Incoming Call from ', user.state.username);
+        incomingCall(user.state.username).then((acceptedCall) => {
+            if (acceptedCall) {
+                // End an already open call before opening a new one
+                ChatEngine.me.webRTC.disconnect();
+                videoModal.classList.remove(hide);
+                chatInterface.classList.add(hide);
+            }
+
+            callResponseCallback({ acceptedCall });
+        });
+    };
+
+    const onCallResponse = (acceptedCall) => {
+        console.log('Call response: ', acceptedCall ? 'accepted' : 'rejected');
+        if (acceptedCall) {
+            videoModal.classList.remove(hide);
+            chatInterface.classList.add(hide);
+        }
+    };
+
+    const onDisconnect = () => {
+        console.log('Call disconnected');
+        videoModal.classList.add(hide);
+        chatInterface.classList.remove(hide);
+    };
+
+    // add the WebRTC plugin
+    let config = {
+        onIncomingCall,
+        onCallResponse,
+        onDisconnect,
+        onPeerStream,
+        myStream: localStream,
+        rtcConfig,
+        // ignoreNonTurn: true
+    };
+
+    const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
+    ChatEngine.me.plugin(webRTC(config));
+
+    // Add a user to the online list when they connect
+    ChatEngine.global.on('$.online.*', (payload) => {
+        if (payload.user.name === 'Me') {
+            return;
+        }
+
+        const userId = payload.user.uuid;
+        const name = payload.user.state.username;
+
+        const userListDomNode = createUserListItem(userId, name);
+
+        const index = onlineUuids.findIndex(id => id === payload.user.uuid);
+        const alreadyInList = index > -1 ? true : false;
+
+        if (!alreadyInList) {
+            onlineUuids.push(payload.user.uuid);
+        } else {
+            return;
+        }
+
+        onlineList.appendChild(userListDomNode);
+
+        userListDomNode.addEventListener('click', (event) => {
+            const userId = userListDomNode.id;
+            const userToCall = payload.user;
+
+            confirmCall(name).then((yesDoCall) => {
+                if (yesDoCall) {
+                    ChatEngine.me.webRTC.callUser(userToCall, {
+                        myStream: localStream
+                    });
+                }
+            });
+        });
+    });
+
+    // Remove a user from the online list when they disconnect
+    ChatEngine.global.on('$.offline.*', (payload) => {
+        const index = onlineUuids.findIndex((id) => id === payload.user.uuid);
+        onlineUuids.splice(index, 1);
+
+        const div = document.getElementById(payload.user.uuid);
+        if (div) div.remove();
+    });
+
+    // Render up to 20 old messages in the global chat
+    ChatEngine.global.search({
+        reverse: true,
+        event: 'message',
+        limit: 20
+    }).on('message', renderMessage);
+
+    // Render new messages in realtime
+    ChatEngine.global.on('message', renderMessage);
+});
+
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// UI Render Functions
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+function sendMessage() {
+    const messageToSend = messageInput.value.replace(/\r?\n|\r/g, '');
+    const trimmed = messageToSend.replace(/(\s)/g, '');
+
+    if (trimmed.length > 0) {
+        ChatEngine.global.emit('message', {
+            text: messageToSend
+        });
+    }
+
+    messageInput.value = '';
+}
+
+function renderMessage(message) {
+    const messageDomNode = createMessage(message);
+
+    log.append(messageDomNode);
+
+    // Sort messages in chat log based on their timetoken
+    sortNodeChildren(log, 'id');
+
+    chat.scrollTop = chat.scrollHeight;
+}
+
 function incomingCall(name) {
     return new Promise((resolve) => {
         acceptCallButton.onclick = function() {
-            ChatEngine.me.webRTC.disconnect();
             incomingCallModal.classList.add(hide);
-            videoModal.classList.remove(hide);
-            chatInterface.classList.add(hide);
             resolve(true);
         }
 
@@ -114,7 +242,6 @@ function incomingCall(name) {
 function confirmCall(name) {
     return new Promise((resolve) => {
         yesCallButton.onclick = function() {
-            ChatEngine.me.webRTC.disconnect();
             callConfirmModal.classList.add(hide);
             resolve(true);
         }
@@ -132,6 +259,7 @@ function confirmCall(name) {
 function getLocalUserName() {
     return new Promise((resolve) => {
         usernameInput.focus();
+        usernameInput.value = '';
 
         usernameInput.addEventListener('keyup', (event) => {
             const nameLength = usernameInput.value.length;
@@ -208,14 +336,13 @@ function createMessage(message) {
     return div;
 }
 
-/**
- * Makes a new, version 4, universally unique identifier (UUID). Written by
- *     Stack Overflow user broofa
- *     (https://stackoverflow.com/users/109538/broofa) in this post
- *     (https://stackoverflow.com/a/2117523/6193736).
- *
- * @returns {string} A version 4 compliant UUID.
- */
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Utility Functions
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Makes a new, version 4, universally unique identifier (UUID). Written by
+//     Stack Overflow user broofa
+//     (https://stackoverflow.com/users/109538/broofa) in this post
+//     (https://stackoverflow.com/a/2117523/6193736).
 function newUuid() {
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(
         /[018]/g,
@@ -224,136 +351,7 @@ function newUuid() {
     );
 }
 
-ChatEngine.on('$.ready', (data) => {
-    let onlineUuids = [];
-
-    const onPeerStream = (webRTCTrackEvent) => {
-        let peerStream = webRTCTrackEvent.streams[0];
-        remoteVideo.srcObject = peerStream;
-    };
-
-    const onIncomingCall = (user, callResponseCallback) => {
-        incomingCall(user.state.username).then((acceptedCall) => {
-            callResponseCallback({ acceptedCall });
-        });
-    };
-
-    const onCallResponse = (acceptedCall) => {
-        console.log('onCallResponse');
-        if (acceptedCall) {
-
-            videoModal.classList.remove(hide);
-            chatInterface.classList.add(hide);
-        }
-    };
-
-    const onDisconnect = () => {
-        console.log('call disconnected');
-        videoModal.classList.add(hide);
-        chatInterface.classList.remove(hide);
-    };
-
-    // add the WebRTC plugin
-    let config = {
-        onIncomingCall,
-        onCallResponse,
-        onDisconnect,
-        onPeerStream,
-        myStream: localStream,
-        // rtcConfig,
-        // ignoreNonTurn: true
-    };
-
-    const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
-    ChatEngine.me.plugin(webRTC(config));
-
-    // Add a user from the online list when they connect
-    ChatEngine.global.on('$.online.*', (payload) => {
-        if (payload.user.name === 'Me') {
-            return;
-        }
-
-        const userId = payload.user.uuid;
-        const name = payload.user.state.username;
-
-        const userListDomNode = createUserListItem(userId, name);
-
-        const index = onlineUuids.findIndex(id => id === payload.user.uuid);
-        const alreadyInList = index > -1 ? true : false;
-
-        if (!alreadyInList) {
-            onlineUuids.push(payload.user.uuid);
-        } else {
-            return;
-        }
-
-        userListDomNode.addEventListener('click', (event) => {
-            const userId = userListDomNode.id;
-            const userToCall = payload.user;
-
-            confirmCall(name).then((doCall) => {
-                if (doCall) {
-                    ChatEngine.me.webRTC.callUser(userToCall, {
-                        myStream: localStream
-                    });
-                }
-            });
-        });
-
-        onlineList.appendChild(userListDomNode);
-    });
-
-    // Remove a user from the online list if they disconnect
-    ChatEngine.global.on('$.offline.*', (payload) => {
-        const index = onlineUuids.findIndex(id => id === payload.user.uuid);
-        onlineUuids.splice(index, 1);
-
-        const div = document.getElementById(payload.user.uuid);
-        if (div) div.remove();
-    });
-
-    // search for 20 old `message` events
-    ChatEngine.global.search({
-        reverse: true,
-        event: 'message',
-        limit: 20
-    }).on('message', (data) => {
-      renderMessage(data);
-    });
-
-    ChatEngine.global.on('message', (data) => {
-        renderMessage(data);
-    });
-});
-
-window.onbeforeunload = function(event) {
-    ChatEngine.disconnect();
-};
-
-function sendMessage() {
-    const messageToSend = messageInput.value.replace(/\r?\n|\r/g, '');
-    const trimmed = messageToSend.replace(/(\s)/g, '');
-
-    if (trimmed.length > 0) {
-        ChatEngine.global.emit('message', {
-            text: messageToSend
-        });
-    }
-
-    messageInput.value = '';
-}
-
-function renderMessage(message) {
-    const messageDomNode = createMessage(message);
-
-    log.append(messageDomNode);
-
-    // Sort messages in chat log based on their timetoken
-    sortNodeChildren(log, 'id');
-
-    chat.scrollTop = chat.scrollHeight;
-}
-
+// Sorts sibling HTML elements based on an attribute value
 function sortNodeChildren(parent, attribute) {
     const length = parent.children.length;
     for (let i = 0; i < length-1; i++) {
