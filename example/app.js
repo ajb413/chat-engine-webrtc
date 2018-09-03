@@ -13,6 +13,7 @@ const usernameInput = document.getElementById('username-input');
 const joinButton = document.getElementById('join-button');
 
 const callConfirmModal = document.getElementById('call-confirm-modal');
+const callConfirmUsername = document.getElementById('call-confirm-username');
 const yesCallButton = document.getElementById('yes-call');
 const noCallButton = document.getElementById('no-call');
 
@@ -94,7 +95,7 @@ function incomingCall(name) {
     });
 }
 
-function confirmCall(uuid) {
+function confirmCall(name) {
     return new Promise((resolve) => {
         yesCallButton.onclick = function() {
             callConfirmModal.classList.add(hide);
@@ -106,6 +107,7 @@ function confirmCall(uuid) {
             resolve(false);
         }
 
+        callConfirmUsername.innerHTML = name;
         callConfirmModal.classList.remove(hide);
     });
 }
@@ -271,7 +273,7 @@ ChatEngine.on('$.ready', (data) => {
             const userId = userListDomNode.id;
             const userToCall = payload.user;
 
-            confirmCall().then((doCall) => {
+            confirmCall(name).then((doCall) => {
                 if (doCall) {
                     ChatEngine.me.webRTC.callUser(userToCall, {
                         myStream: localStream
