@@ -139,13 +139,13 @@ ChatEngine.on('$.ready', (data) => {
 
     // add the WebRTC plugin
     let config = {
+        rtcConfig,
+        ignoreNonTurn: false,
+        myStream: localStream,
+        onPeerStream,
         onIncomingCall,
         onCallResponse,
-        onDisconnect,
-        onPeerStream,
-        myStream: localStream,
-        // rtcConfig,
-        // ignoreNonTurn: true
+        onDisconnect
     };
 
     const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];

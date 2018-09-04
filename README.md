@@ -12,7 +12,13 @@ const ChatEngine = ChatEngineCore.create({
 });
 
 ChatEngine.connect('Username');
-ChatEngine.on('$ready', () = { ... });
+ChatEngine.on('$.ready', (data) => {
+    // Set up ChatEngine and WebRTC config options
+    // ...
+    const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
+    ChatEngine.me.plugin(webRTC(config));
+});
+
 ```
 
 1. Set WebRTC configuration and event handlers for WebRTC related events
