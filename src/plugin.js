@@ -12,7 +12,7 @@ import {
 } from './helpers/error-handlers.js';
 
 import {
-    uuid,
+    newUuid,
     eventNames
 } from './helpers/util.js';
 
@@ -131,7 +131,7 @@ class WebRtcPhone {
         };
         const peerConnection = this.peerConnection
             = new RTCPeerConnection(rtcConfig);
-        const callId = this.callId = uuid(); // Call ID
+        const callId = this.callId = newUuid(); // Call ID
         let localDescription; // WebRTC local description
         peerConnection.ontrack = onPeerStream;
         myStream.getTracks().forEach((track) => {

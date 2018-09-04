@@ -33,10 +33,24 @@ const uuid = newUuid();
 
 // An RTCConfiguration dictionary from the browser WebRTC API
 // Add STUN and TURN server information here for WebRTC calling
-const rtcConfig = {};
+const rtcConfig = {
+    iceServers: [{
+        'urls': [
+            'turn:w2.xirsys.com:80?transport=udp',
+            'turn:w2.xirsys.com:3478?transport=udp',
+            'turn:w2.xirsys.com:80?transport=tcp',
+            'turn:w2.xirsys.com:3478?transport=tcp',
+            'turns:w2.xirsys.com:443?transport=tcp',
+            'turns:w2.xirsys.com:5349?transport=tcp'
+        ],
+        'credential': '35426d02-a7c3-11e8-98a1-f9e0e877debe',
+        'username': '35426bfe-a7c3-11e8-a8bd-e7d0be3af999'
+    }]
+};
 
-let username;
-let localStream;
+let username; // local user name
+let localStream; // Local audio and video stream
+let noVideoTimeout; // Used for checking if video connection succeeded
 
 // Init the audio and video stream on this client
 getLocalStream().then((myStream) => {
@@ -77,6 +91,7 @@ submit.addEventListener('click', sendMessage);
 closeVideoButton.addEventListener('click', (event) => {
     videoModal.classList.add(hide);
     chatInterface.classList.remove(hide);
+    clearTimeout(noVideoTimeout);
     ChatEngine.me.webRTC.disconnect();
 });
 
@@ -100,6 +115,7 @@ ChatEngine.on('$.ready', (data) => {
     const onPeerStream = (webRTCTrackEvent) => {
         console.log('Peer a/v stream now available');
         const peerStream = webRTCTrackEvent.streams[0];
+        window.peerStream = peerStream;
         remoteVideo.srcObject = peerStream;
     };
 
@@ -111,6 +127,7 @@ ChatEngine.on('$.ready', (data) => {
                 ChatEngine.me.webRTC.disconnect();
                 videoModal.classList.remove(hide);
                 chatInterface.classList.add(hide);
+                noVideoTimeout = setTimeout(noVideo, 5000);
             }
 
             callResponseCallback({ acceptedCall });
@@ -122,6 +139,7 @@ ChatEngine.on('$.ready', (data) => {
         if (acceptedCall) {
             videoModal.classList.remove(hide);
             chatInterface.classList.add(hide);
+            noVideoTimeout = setTimeout(noVideo, 5000);
         }
     };
 
@@ -129,6 +147,7 @@ ChatEngine.on('$.ready', (data) => {
         console.log('Call disconnected');
         videoModal.classList.add(hide);
         chatInterface.classList.remove(hide);
+        clearTimeout(noVideoTimeout);
     };
 
     // add the WebRTC plugin
@@ -138,7 +157,7 @@ ChatEngine.on('$.ready', (data) => {
         onDisconnect,
         onPeerStream,
         myStream: localStream,
-        rtcConfig,
+        // rtcConfig,
         // ignoreNonTurn: true
     };
 
@@ -368,5 +387,14 @@ function sortNodeChildren(parent, attribute) {
                 .insertBefore(parent.children[i+1], parent.children[i]);
             i = -1;
         }
+    }
+}
+
+function noVideo() {
+    const message = 'No peer connection made.\n' +
+        'Try adding a TURN server to the WebRTC configuration.';
+
+    if (remoteVideo.paused) {
+        alert(message);
     }
 }
