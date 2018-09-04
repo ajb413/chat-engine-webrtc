@@ -38,6 +38,7 @@ const rtcConfig = {};
 let username;
 let localStream;
 
+// Init the audio and video stream on this client
 getLocalStream().then((myStream) => {
     localStream = myStream;
     myVideoSample.srcObject = localStream;
@@ -49,37 +50,42 @@ getLocalStream().then((myStream) => {
     brokenSampleVideo.classList.remove(hide);
 });
 
+// Prompt user for a username input
 getLocalUserName().then((myUsername) => {
     username = myUsername;
     usernameModal.classList.add(hide);
 
+    // Connect ChatEngine after a username and UUID have been made
     ChatEngine.connect(uuid, {
         username
     }, 'auth-key');
 });
 
+// Send a message when Enter key is pressed
 messageInput.addEventListener('keydown', (event) => {
-    if (
-        event.keyCode === 13 &&
-        !event.shiftKey && 
-        messageInput.value !== ''
-    ) {
+    if (event.keyCode === 13 && !event.shiftKey) {
+        event.preventDefault();
         sendMessage();
+        return;
     }
 });
 
+// Send a message when the submit button is clicked
 submit.addEventListener('click', sendMessage);
 
+// Register a disconnect event handler when the close video button is clicked
 closeVideoButton.addEventListener('click', (event) => {
     videoModal.classList.add(hide);
     chatInterface.classList.remove(hide);
     ChatEngine.me.webRTC.disconnect();
 });
 
+// Disconnect ChatEngine before a user navigates away from the page
 window.onbeforeunload = (event) => {
     ChatEngine.disconnect();
 };
 
+// Init ChatEngine
 const ChatEngine = ChatEngineCore.create({
     publishKey: 'pub-c-60a065cb-fe91-432c-b50e-bd4974cb1f01',
     subscribeKey: 'sub-c-7c977f32-a1b3-11e8-bc5d-ae80c5ea0c92'
@@ -87,6 +93,7 @@ const ChatEngine = ChatEngineCore.create({
     globalChannel: 'chat-engine-webrtc-example'
 });
 
+// Init the WebRTC plugin and chat interface here
 ChatEngine.on('$.ready', (data) => {
     let onlineUuids = [];
 
@@ -198,21 +205,8 @@ ChatEngine.on('$.ready', (data) => {
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // UI Render Functions
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-function sendMessage() {
-    const messageToSend = messageInput.value.replace(/\r?\n|\r/g, '');
-    const trimmed = messageToSend.replace(/(\s)/g, '');
-
-    if (trimmed.length > 0) {
-        ChatEngine.global.emit('message', {
-            text: messageToSend
-        });
-    }
-
-    messageInput.value = '';
-}
-
 function renderMessage(message) {
-    const messageDomNode = createMessage(message);
+    const messageDomNode = createMessageHTML(message);
 
     log.append(messageDomNode);
 
@@ -318,7 +312,7 @@ function createUserListItem(userId, name) {
     return div;
 }
 
-function createMessage(message) {
+function createMessageHTML(message) {
     const text = message.data.text;
     const user = message.sender.state.username;
     const jsTime = parseInt(message.timetoken.substring(0,13));
@@ -336,9 +330,23 @@ function createMessage(message) {
     return div;
 }
 
+
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Utility Functions
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+function sendMessage() {
+    const messageToSend = messageInput.value.replace(/\r?\n|\r/g, '');
+    const trimmed = messageToSend.replace(/(\s)/g, '');
+
+    if (trimmed.length > 0) {
+        ChatEngine.global.emit('message', {
+            text: messageToSend
+        });
+    }
+
+    messageInput.value = '';
+}
+
 // Makes a new, version 4, universally unique identifier (UUID). Written by
 //     Stack Overflow user broofa
 //     (https://stackoverflow.com/users/109538/broofa) in this post
