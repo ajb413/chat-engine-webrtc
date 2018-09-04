@@ -1,6 +1,6 @@
 # WebRTC Video Chat Plugin for ChatEngine
 
-Adds the ability to do WebRTC video in ChatEngine Chat
+Adds the ability to do WebRTC audio/video with ChatEngine using `direct` events for [signaling](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling)
 
 ### Quick Start
 
@@ -47,15 +47,14 @@ const onDisconnect = () => {
 
 2. Set configuration and attach this plugin to the `Me` object.
 ```js
-// add the WebRTC plugin
-let config = {
+const config = {
     rtcConfig,             // An RTCConfiguration dictionary from the browser WebRTC API
-    ignoreNonTurn: false   // Only accept TURN candidates when this is true
+    ignoreNonTurn: false,  // Only accept TURN candidates when this is true
     myStream: localStream, // Local MediaStream object from the browser Media Streams API
     onPeerStream,          // Event Handler
     onIncomingCall,        // Event Handler
     onCallResponse,        // Event Handler
-    onDisconnect,          // Event Handler
+    onDisconnect           // Event Handler
 };
 
 const webRTC = ChatEngineCore.plugin['chat-engine-webrtc'];
@@ -66,6 +65,6 @@ ChatEngine.me.plugin(webRTC(config));
 ```js
 const userToCall = aChatEngineUserObject;
 ChatEngine.me.webRTC.callUser(userToCall, {
-    // 2nd chance to set configuration options
+    // 2nd chance to set configuration options (see object in step 2)
 });
 ```
