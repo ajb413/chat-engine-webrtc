@@ -75,6 +75,7 @@ ChatEngine.me.webRTC.callUser(userToCall, {
 });
 ```
 
+
 # Frequently Asked Questions (FAQ) about the WebRTC Plugin
 
 ### Is the plugin officially a part of ChatEngine?
@@ -90,7 +91,7 @@ No. ChatEngine pairs very well with WebRTC as a signaling service. This means th
 - I, User A, would like to end our call User B
 - Text instant messaging like in Slack, Google Hangouts, Skype, Facebook Messenger, etc.
 
-## Can I make a group call with more than 2 participants?
+### Can I make a group call with more than 2 participants?
 Group calling is possible to develop with WebRTC and ChatEngine, however, the current ChatEngine WebRTC plugin can connect only 2 users in a private call. The community may develop this feature in the future but there are no plans for development to date.
 
 ### I found a bug in the plugin. Where do I report it?
