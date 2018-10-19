@@ -78,8 +78,16 @@ ChatEngine.me.webRTC.callUser(userToCall, {
 
 # Frequently Asked Questions (FAQ) about the WebRTC Plugin
 
-### Is the plugin officially a part of ChatEngine?
-No. It is an open source project that is community supported. If you want to report a bug, do so on the [GitHub Issues page](https://github.com/ajb413/chat-engine-webrtc/issues).
+### What is WebRTC?
+WebRTC is a free and open source project that enables web browsers and mobile devices to provide a simple real-time communication API. Please read this [PubNub blog](https://www.pubnub.com/blog/webrtc-video-chat-engine-plugin/?devrel_gh=chat-engine-webrtc) to learn more about WebRTC and how to implement the code in this repository.
+
+### What is ChatEngine?
+PubNub ChatEngine is an object oriented event emitter based framework for building chat applications in Javascript. For [more information on ChatEngine](https://www.pubnub.com/tutorials/chatengine/?devrel_gh=chat-engine-webrtc), and what its [plugins are for](https://www.pubnub.com/docs/chat-engine/plugins/delivery-and-read-receipts?devrel_gh=chat-engine-webrtc), go to the [PubNub website](https://www.pubnub.com/?devrel_gh=chat-engine-webrtc).
+
+### What is PubNub? Why is PubNub relevant to WebRTC?
+[PubNub](https://www.pubnub.com/?devrel_gh=chat-engine-webrtc) is a global Data Stream Network (DSN) and realtime network-as-a-service. PubNub's primary product is a realtime publish/subscribe messaging API built on a global data stream network which is made up of a replicated network with multiple points of presence around the world.
+
+PubNub is a low cost, easy to use, infrastructure API that can be implemented rapidly as a WebRTC signaling service. The signaling service is responsible for delivering messages to WebRTC peer clients. See the next question for the specific signals that PubNub's publish/subscribe API handles.
 
 ### Does ChatEngine stream audio or video data?
 No. ChatEngine pairs very well with WebRTC as a signaling service. This means that PubNub signals events from client to client using the ChatEngine #direct events. These events include:
@@ -90,6 +98,9 @@ No. ChatEngine pairs very well with WebRTC as a signaling service. This means th
 - I, User B, would like to end our call User A
 - I, User A, would like to end our call User B
 - Text instant messaging like in Slack, Google Hangouts, Skype, Facebook Messenger, etc.
+
+### Is this repository's plugin officially part of ChatEngine?
+No. It is an open source project that is community supported. If you want to report a bug, do so on the [GitHub Issues page](https://github.com/ajb413/chat-engine-webrtc/issues).
 
 ### Can I make a group call with more than 2 participants?
 Group calling is possible to develop with WebRTC and ChatEngine, however, the current ChatEngine WebRTC plugin can connect only 2 users in a private call. The community may develop this feature in the future but there are no plans for development to date.
