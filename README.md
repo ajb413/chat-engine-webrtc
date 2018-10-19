@@ -79,7 +79,7 @@ ChatEngine.me.webRTC.callUser(userToCall, {
 # Frequently Asked Questions (FAQ) about the WebRTC Plugin
 
 ### What is WebRTC?
-WebRTC is a free and open source project that enables web browsers and mobile devices to provide a simple real-time communication API. Please read this [PubNub blog](https://www.pubnub.com/blog/webrtc-video-chat-engine-plugin/?devrel_gh=chat-engine-webrtc) to learn more about WebRTC and how to implement the code in this repository.
+WebRTC is a free and open source project that enables web browsers and mobile devices to provide a simple real-time communication API. Please read this [PubNub blog](https://www.pubnub.com/blog/webrtc-video-chat-engine-plugin-video-calling-chat/?devrel_gh=chat-engine-webrtc) to learn more about WebRTC and how to implement the code in this repository.
 
 ### What is ChatEngine?
 PubNub ChatEngine is an object oriented event emitter based framework for building chat applications in Javascript. For [more information on ChatEngine](https://www.pubnub.com/tutorials/chatengine/?devrel_gh=chat-engine-webrtc), and what its [plugins are for](https://www.pubnub.com/docs/chat-engine/plugins/delivery-and-read-receipts?devrel_gh=chat-engine-webrtc), go to the [PubNub website](https://www.pubnub.com/?devrel_gh=chat-engine-webrtc).
